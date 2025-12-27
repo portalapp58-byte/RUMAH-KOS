@@ -491,13 +491,13 @@ const App = () => {
             <div className="bg-blue-600 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 text-white shadow-lg">
               <Home size={32} />
             </div>
-            <h1 className="text-2xl font-bold text-slate-800">Manajemen Kos-an</h1>
-            <p className="text-slate-500">Silakan masukkan kode akses Anda</p>
+            <h1 className="text-2xl font-bold text-slate-800">Management Rumah Kos</h1>
+            <p className="text-slate-500">Building By Malang Florist Group</p>
           </div>
           <div className="space-y-4">
             <input 
               type="password" 
-              placeholder="Masukkan Kode (Default: ADMIN456)" 
+              placeholder="Masukkan Kode User Anda" 
               className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all"
               value={loginCode}
               onChange={(e) => setLoginCode(e.target.value)}
@@ -511,8 +511,8 @@ const App = () => {
             </button>
           </div>
           <div className="mt-6 text-center text-xs text-slate-400">
-            <p>Kode Default:</p>
-            <p>Admin: ADMIN456 | Owner: OWNER123</p>
+            <p>Aplikasi Kode V.5.2.1:</p>
+            <p>Support By Malang Florist Group</p>
           </div>
         </div>
       </div>
