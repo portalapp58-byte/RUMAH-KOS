@@ -116,7 +116,7 @@ const App = () => {
       return {
         id: num,
         number: roomNumber,
-        price: isFloor1 ? 800000 : 600000,
+        price: isFloor1 ? 0 : 0,
         type: isFloor1 ? 'Standard' : 'Ekonomis',
         floor: isFloor1 ? '1' : '2',
         bathroom: isFloor1 ? 'Dalam' : 'Luar',
