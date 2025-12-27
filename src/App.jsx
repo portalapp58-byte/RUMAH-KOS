@@ -116,11 +116,11 @@ const App = () => {
       return {
         id: num,
         number: roomNumber,
-        price: isFloor1 ? 1500000 : 1300000,
+        price: isFloor1 ? 800000 : 600000,
         type: isFloor1 ? 'Standard' : 'Ekonomis',
         floor: isFloor1 ? '1' : '2',
         bathroom: isFloor1 ? 'Dalam' : 'Luar',
-        desc: isFloor1 ? 'AC, Kasur, Lemari' : 'Kipas, Kasur, Meja',
+        desc: isFloor1 ? 'Lantai Bawah' : 'Lantai Atas',
         resident: '', 
         entryDate: '',
         nextPaymentDate: '',
