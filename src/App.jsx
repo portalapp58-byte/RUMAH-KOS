@@ -35,7 +35,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-// --- KONFIGURASI & HELPER V.6.0 ---
+// --- KONFIGURASI & HELPER V.6.2 (STABILIZED) ---
 
 // Format Mata Uang IDR
 const formatIDR = (amount) => {
@@ -46,10 +46,11 @@ const formatIDR = (amount) => {
   }).format(amount);
 };
 
-// Format Tanggal Indo
+// Format Tanggal Indo (Safety Added)
 const formatDateIndo = (dateStr) => {
   if (!dateStr) return '-';
   const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return '-'; // Return strip jika tanggal error
   return date.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
 };
 
@@ -57,18 +58,26 @@ const formatDateIndo = (dateStr) => {
 const addMonths = (dateStr, months) => {
   if (!dateStr) return '';
   const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return new Date().toISOString().split('T')[0];
   date.setMonth(date.getMonth() + months);
   return date.toISOString().split('T')[0];
 };
 
-// --- LOGIKA STATUS V.6.0 (CORE LOGIC) ---
+// --- LOGIKA STATUS V.6.2 (ANTI CRASH) ---
 const getStatusV6 = (dueDateStr, residentName) => {
     // 1. Jika tidak ada penghuni -> KOSONG (Putih)
     if (!residentName) return { code: 'EMPTY', color: 'white', label: 'Kosong' };
 
+    // Safety: Jika tanggal error/kosong, anggap aman dulu agar tidak crash
+    if (!dueDateStr) return { code: 'SAFE', color: 'green', label: 'AMAN', daysLeft: 0 };
+
     const today = new Date();
     today.setHours(0,0,0,0);
+    
     const due = new Date(dueDateStr);
+    // Safety: Jika format tanggal database rusak
+    if (isNaN(due.getTime())) return { code: 'SAFE', color: 'green', label: 'Data Tanggal Error', daysLeft: 0 };
+    
     due.setHours(0,0,0,0);
 
     // Hitung selisih hari (Positif = Belum jatuh tempo, Negatif = Lewat)
@@ -104,11 +113,16 @@ const getStatusV6 = (dueDateStr, residentName) => {
     };
 };
 
-// Helper: Format Durasi Telat (Multi-Month Logic)
+// Helper: Format Durasi Telat (Safety Added)
 const formatOverdueDuration = (dueDateStr) => {
+    if(!dueDateStr) return "Data Error";
+    
     const today = new Date();
     today.setHours(0,0,0,0);
     const due = new Date(dueDateStr);
+    
+    if (isNaN(due.getTime())) return "Format Error";
+    
     due.setHours(0,0,0,0);
     
     // Total hari telat
@@ -117,7 +131,7 @@ const formatOverdueDuration = (dueDateStr) => {
 
     if (totalDays <= 0) return null;
 
-    // Logika Bulan & Hari (Asumsi 30 hari/bulan untuk simplifikasi display)
+    // Logika Bulan & Hari (Asumsi 30 hari/bulan)
     if (totalDays < 30) {
         return `${totalDays} Hari`;
     } else {
@@ -127,14 +141,18 @@ const formatOverdueDuration = (dueDateStr) => {
     }
 };
 
-// Helper: Hitung Total Hutang (Financial)
+// Helper: Hitung Total Hutang (Safety Added)
 const getDebtCalculation = (room) => {
   if (!room.resident || !room.nextPaymentDate) {
     return { months: 0, totalDebt: 0 };
   }
+  
   const today = new Date();
   today.setHours(0,0,0,0);
   const dueDate = new Date(room.nextPaymentDate);
+  
+  if (isNaN(dueDate.getTime())) return { months: 0, totalDebt: 0 }; // Safety Return
+  
   dueDate.setHours(0,0,0,0);
 
   if (dueDate >= today) return { months: 0, totalDebt: 0 };
@@ -181,7 +199,7 @@ const App = () => {
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
   const [checkoutData, setCheckoutData] = useState(null);
 
-  // --- STATE BARU V.6.1 (CHECKBOX AUTO PAYMENT) ---
+  // --- STATE BARU (CHECKBOX AUTO PAYMENT) ---
   const [enableAutoPayment, setEnableAutoPayment] = useState(true);
 
   // --- STATE LAPORAN ---
@@ -330,7 +348,7 @@ const App = () => {
     const nextMonth = addMonths(today, 1);
     setSelectedRoomForResident(room);
     setResidentFormData({ ...initialResidentState, entryDate: today, nextPaymentDate: nextMonth });
-    setEnableAutoPayment(true); // Default true (dicentang), tapi user bisa uncheck
+    setEnableAutoPayment(true); // Default true
     setShowResidentForm(true);
   };
 
@@ -347,7 +365,7 @@ const App = () => {
     }
   };
 
-  // [REVISI V.6.1] LOGIC SIMPAN PENGHUNI + KONTROL MANUAL
+  // LOGIC SIMPAN PENGHUNI + KONTROL MANUAL
   const handleSaveResident = async () => {
     if (!residentFormData.name || !residentFormData.entryDate) {
       alert("Nama dan Tanggal Masuk wajib diisi!");
@@ -370,8 +388,7 @@ const App = () => {
       const roomPrice = selectedRoomForResident.price || 0;
       let newPaymentLog = null;
 
-      // [UPDATE] Cek Status Checkbox (enableAutoPayment)
-      // Hanya buat payment otomatis JIKA checkbox dicentang
+      // Cek Status Checkbox (enableAutoPayment)
       if (enableAutoPayment && nextDue > entry && roomPrice > 0) {
           const monthsPaid = (nextDue.getFullYear() - entry.getFullYear()) * 12 + (nextDue.getMonth() - entry.getMonth());
           if (monthsPaid > 0) {
@@ -398,11 +415,9 @@ const App = () => {
 
       setShowResidentForm(false);
       
-      // Feedback Message
       if (newPaymentLog) {
           alert(`Penghuni disimpan & Pembayaran otomatis sebesar ${formatIDR(newPaymentLog.amount)} tercatat!`);
       } else {
-          // Jika manual
           alert("Data penghuni disimpan. Pembayaran belum dicatat (Mode Manual). Silakan klik tombol 'Bayar' jika ingin menginput pembayaran.");
       }
     } catch (error) {
@@ -473,6 +488,11 @@ const App = () => {
 
     const currentDue = new Date(paymentFormData.currentDueDateRaw);
     const newDueObj = new Date(currentDue);
+    // Safety check date
+    if(isNaN(newDueObj.getTime())) {
+       return { months: 0, remainder: 0, newDate: '', isValid: false };
+    }
+
     newDueObj.setMonth(newDueObj.getMonth() + monthsPaid);
     const newDueDateStr = newDueObj.toISOString().split('T')[0];
     
@@ -664,7 +684,7 @@ const App = () => {
             </button>
           </div>
           <div className="mt-6 text-center text-xs text-slate-400">
-            <p>Aplikasi Kode V.6.1 (Optional Auto Payment on Register):</p>
+            <p>Aplikasi Kode V.6.2 (Stabilized & Manual Pay Option):</p>
             <p>Support By Malang Florist Group</p>
           </div>
         </div>
@@ -788,7 +808,7 @@ const App = () => {
             </div>
           )}
 
-          {/* 2. Registrasi Penghuni (UPDATE V.6.1: CHECKBOX) */}
+          {/* 2. Registrasi Penghuni (UPDATE: CHECKBOX) */}
           {showResidentForm && (
             <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm print:hidden">
               <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200">
@@ -1113,124 +1133,124 @@ const App = () => {
           )}
 
            
-          {/* ================= VIEW OWNER ================= */}
-          {userRole === 'owner' && (
-            <div className="space-y-6">
-              {activeTab === 'monitor' && (
-                <>
-                  <div className="flex justify-between items-center mb-6">
-                    <h3 className="font-bold text-lg text-slate-800">Ringkasan Okupansi</h3>
-                    <button
-                      onClick={loadAllData}
-                      className="flex items-center gap-2 bg-white border border-slate-200 text-slate-600 hover:text-blue-600 hover:border-blue-300 px-4 py-2 rounded-xl text-sm font-bold transition-all shadow-sm active:scale-95"
-                    >
-                      <RefreshCw size={18} className={isLoading ? "animate-spin" : ""} />
-                      Refresh Data
-                    </button>
+          {/* ================= VIEW PENGELOLA (ADMIN) ================= */}
+          {userRole === 'admin' && (
+            <div className="space-y-8">
+               
+              {/* MENU 1: DASHBOARD */}
+              {activeTab === 'dashboard' && (
+                <div className="space-y-6">
+                  {/* Legend Warna Grid V.6.0 */}
+                  <div className="flex flex-col md:flex-row justify-between items-start md:items-center print:hidden gap-4">
+                    <h3 className="font-bold text-lg text-slate-800">Status Grid Kamar</h3>
+                    <div className="flex flex-wrap gap-3">
+                       <span className="flex items-center gap-1 text-xs text-slate-600 bg-white px-2 py-1 rounded border"><div className="w-3 h-3 bg-white border border-slate-300 rounded-full"></div> Kosong</span>
+                       <span className="flex items-center gap-1 text-xs text-slate-600 bg-white px-2 py-1 rounded border"><div className="w-3 h-3 bg-green-500 rounded-full"></div> Aman</span>
+                       <span className="flex items-center gap-1 text-xs text-slate-600 bg-white px-2 py-1 rounded border"><div className="w-3 h-3 bg-yellow-400 rounded-full"></div> H-5 Tagih</span>
+                       <span className="flex items-center gap-1 text-xs text-slate-600 bg-white px-2 py-1 rounded border"><div className="w-3 h-3 bg-red-500 rounded-full"></div> Telat</span>
+                    </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
-                        <div>
-                           <p className="text-sm font-bold text-slate-500 mb-1">Kamar Terisi</p>
-                           <h3 className="text-3xl font-black text-slate-800">{occupiedRooms} <span className="text-sm font-medium text-slate-400">/ {rooms.length}</span></h3>
+                  {/* GRID KAMAR */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                    {rooms.map(room => {
+                      const statusV6 = getStatusV6(room.nextPaymentDate, room.resident);
+                      const debtInfo = getDebtCalculation(room);
+
+                      let cardClass = 'bg-white border-slate-200 hover:border-blue-300';
+                      let statusBadge = null;
+
+                      if (statusV6.code === 'OVERDUE') {
+                          cardClass = 'bg-red-50 border-red-300 hover:border-red-500';
+                          statusBadge = (
+                              <div className="text-right">
+                                  <span className="block text-[10px] font-bold text-white bg-red-500 px-2 py-0.5 rounded-full mb-1">
+                                      {formatOverdueDuration(room.nextPaymentDate)}
+                                  </span>
+                                  <span className="text-xs font-black text-red-600">-{formatIDR(debtInfo.totalDebt)}</span>
+                              </div>
+                          );
+                      } else if (statusV6.code === 'WARNING') {
+                          cardClass = 'bg-yellow-50 border-yellow-300 hover:border-yellow-500';
+                          statusBadge = (
+                              <span className="text-[10px] font-bold text-yellow-700 bg-yellow-200 px-2 py-0.5 rounded-full animate-pulse">
+                                  TAGIH! {statusV6.label}
+                              </span>
+                          );
+                      } else if (statusV6.code === 'SAFE') {
+                          cardClass = 'bg-green-50 border-green-300 hover:border-green-500';
+                          statusBadge = <span className="text-[10px] font-bold text-white bg-green-500 px-2 py-0.5 rounded-full">AMAN</span>;
+                      }
+
+                      return (
+                        <div 
+                          key={room.id} 
+                          onClick={() => setSelectedRoom(room)}
+                          className={`p-4 rounded-2xl border-2 transition-all cursor-pointer shadow-sm hover:shadow-md relative overflow-hidden ${cardClass}`}
+                        >
+                          <div className="flex justify-between items-start mb-2">
+                            <span className="font-black text-xl text-slate-800">{room.number.replace('ROOM ', '')}</span>
+                            {statusV6.code === 'OVERDUE' && <AlertCircle size={18} className="text-red-500 animate-pulse" />}
+                            {statusV6.code === 'SAFE' && <CheckCircle2 size={18} className="text-green-500" />}
+                          </div>
+                          <div className="space-y-1 relative z-10">
+                            <p className="text-xs font-bold text-slate-700 truncate">
+                              {room.resident || <span className="text-slate-400 font-normal">Kosong</span>}
+                            </p>
+                            <div className="flex items-center justify-between">
+                              <p className="text-[10px] text-slate-500">{formatIDR(room.price)}</p>
+                              {statusBadge}
+                            </div>
+                          </div>
                         </div>
-                        <div className="bg-blue-50 p-3 rounded-xl text-blue-600"><Bed size={28} /></div>
-                      </div>
-                      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
-                        <div>
-                           <p className="text-sm font-bold text-slate-500 mb-1">Pendapatan Bulan Ini</p>
-                           <h3 className="text-2xl font-black text-green-600">{formatIDR(currentMonthIncome)}</h3>
-                        </div>
-                        <div className="bg-green-50 p-3 rounded-xl text-green-600"><TrendingUp size={28} /></div>
-                      </div>
-                      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm md:col-span-1">
-                        <div className="flex justify-between items-start mb-2">
-                           <p className="text-sm font-bold text-slate-500">Nunggak / Belum Bayar</p>
-                           <div className="bg-red-50 p-2 rounded-lg text-red-600"><AlertCircle size={20}/></div>
-                        </div>
-                        {overdueRooms.length > 0 ? (
-                           <div className="space-y-2 max-h-24 overflow-y-auto pr-1">
-                              {overdueRooms.map(r => (
-                                 <div key={r.id} className="flex justify-between items-center text-xs p-2 bg-red-50 rounded-lg border border-red-100">
-                                    <span className="font-bold text-slate-700">{r.number}</span>
-                                    <span className="text-red-600 font-bold">{formatOverdueDuration(r.nextPaymentDate)}</span>
-                                 </div>
-                              ))}
-                           </div>
-                        ) : (
-                          <p className="text-xs text-slate-400 italic mt-2">Tidak ada yang menunggak.</p>
-                        )}
-                      </div>
+                      );
+                    })}
                   </div>
-
-                  <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm mt-6">
-                      <h3 className="font-bold text-lg text-slate-800 mb-6">Status Kamar Real-time</h3>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-                        {rooms.map(room => {
-                           // IMPLEMENTASI VISUALISASI V.6.0
-                           const statusV6 = getStatusV6(room.nextPaymentDate, room.resident);
-                           const debtInfo = getDebtCalculation(room);
-
-                           let cardClass = 'bg-white border-slate-200 hover:border-blue-300';
-                           let statusBadge = null;
-
-                           if (statusV6.code === 'OVERDUE') {
-                                cardClass = 'bg-red-50 border-red-300 hover:border-red-500';
-                                statusBadge = (
-                                   <div className="text-right">
-                                       <span className="block text-[10px] font-bold text-white bg-red-500 px-2 py-0.5 rounded-full mb-1">
-                                          {formatOverdueDuration(room.nextPaymentDate)}
-                                       </span>
-                                       <span className="text-xs font-black text-red-600">-{formatIDR(debtInfo.totalDebt)}</span>
-                                   </div>
-                                );
-                           } else if (statusV6.code === 'WARNING') {
-                                cardClass = 'bg-yellow-50 border-yellow-300 hover:border-yellow-500';
-                                statusBadge = (
-                                    <span className="text-[10px] font-bold text-yellow-700 bg-yellow-200 px-2 py-0.5 rounded-full animate-pulse">
-                                        TAGIH! {statusV6.label}
-                                    </span>
-                                );
-                           } else if (statusV6.code === 'SAFE') {
-                                cardClass = 'bg-green-50 border-green-300 hover:border-green-500';
-                                statusBadge = <span className="text-[10px] font-bold text-white bg-green-500 px-2 py-0.5 rounded-full">AMAN</span>;
-                           }
-
-                           return (
-                             <div 
-                                key={room.id} 
-                                onClick={() => setSelectedRoom(room)}
-                                className={`p-4 rounded-2xl border-2 transition-all cursor-pointer shadow-sm hover:shadow-md relative overflow-hidden ${cardClass}`}
-                              >
-                                <div className="flex justify-between items-start mb-2">
-                                   <span className="font-black text-xl text-slate-800">{room.number.replace('ROOM ', '')}</span>
-                                   {statusV6.code === 'OVERDUE' && <AlertCircle size={18} className="text-red-500" />}
-                                   {statusV6.code === 'SAFE' && <CheckCircle2 size={18} className="text-green-500" />}
-                                </div>
-                                <div className="space-y-1 relative z-10">
-                                   <p className="text-xs font-bold text-slate-700 truncate">
-                                      {room.resident || <span className="text-slate-400 font-normal">Kosong</span>}
-                                   </p>
-                                   <div className="flex items-center justify-between">
-                                      <p className="text-[10px] text-slate-500">{formatIDR(room.price)}</p>
-                                      {statusBadge}
-                                   </div>
-                                </div>
-                             </div>
-                           );
-                        })}
-                      </div>
-                  </div>
-                </>
+                </div>
               )}
 
-              {activeTab === 'reports' && (
+              {/* MENU 2: INPUT & KAMAR */}
+              {activeTab === 'rooms' && (
+                <div className="space-y-8">
+                  <div className="bg-white p-6 rounded-2xl border border-slate-200">
+                    <div className="flex justify-between items-center mb-6">
+                      <h3 className="font-bold text-lg">Kelola Kamar (Data Paten)</h3>
+                    </div>
+                    {/* LIST KAMAR */}
+                    <div className="space-y-4">
+                       {rooms.map(room => (
+                         <div key={room.id} className="flex flex-col md:flex-row md:items-center justify-between p-4 border border-slate-100 rounded-xl hover:border-blue-200 transition-all break-inside-avoid">
+                            <div className="flex items-center gap-4 mb-4 md:mb-0">
+                               <div className="h-12 w-12 bg-blue-100 rounded-lg flex items-center justify-center text-blue-600 font-black">{room.number.replace('ROOM ', '')}</div>
+                               <div><h4 className="font-bold text-slate-800">{room.resident ? room.resident : <span className="text-slate-400 italic">Belum ada penghuni</span>}</h4><p className="text-xs text-slate-500">{room.type} • {formatIDR(room.price)}</p></div>
+                            </div>
+                            <div className="flex items-center gap-3 print:hidden">
+                               <button onClick={() => openEditRoomForm(room)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all" title="Edit Fisik Kamar"><Pencil size={18} /></button>
+                               {room.status === 'Available' ? (
+                                  <button onClick={() => openResidentRegistration(room)} className="bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 hover:bg-green-700 shadow-md transition-all"><UserPlus size={16} /> Tambah Penghuni</button>
+                               ) : (
+                                  <>
+                                    <button onClick={() => openResidentDetail(room)} className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-all" title="Info Penghuni"><Info size={18} /></button>
+                                    <button onClick={() => openEditResidentForm(room)} className="p-2 bg-yellow-50 text-yellow-600 rounded-lg hover:bg-yellow-100 transition-all" title="Edit Data Penghuni"><UserCog size={18} /></button>
+                                    <button onClick={() => openPaymentModal(room)} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-md shadow-blue-100 hover:shadow-none hover:bg-blue-700 transition-all flex items-center gap-2"><CreditCard size={16}/> Bayar</button>
+                                    <button onClick={() => openCheckoutModal(room)} className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-all" title="Penghuni Keluar"><DoorOpen size={18} /></button>
+                                  </>
+                               )}
+                            </div>
+                         </div>
+                       ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* MENU 3: RIWAYAT & LAPORAN */}
+              {activeTab === 'history' && (
                 <div className="space-y-6">
                    {reportViewMode === 'grid' ? (
                      <>
-                        <div className="flex justify-between items-center bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-                           <h3 className="font-bold text-lg text-slate-800">Arsip Laporan {selectedYear}</h3>
+                        <div className="flex justify-between items-center bg-white p-4 rounded-2xl border border-slate-200">
+                           <h3 className="font-bold text-lg text-slate-800">Laporan Keuangan {selectedYear}</h3>
                            <div className="flex gap-2">
                              <button onClick={() => setSelectedYear(selectedYear - 1)} className="p-2 bg-slate-100 rounded-lg hover:bg-slate-200 font-bold">&laquo;</button>
                              <span className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg font-bold">{selectedYear}</span>
@@ -1242,52 +1262,51 @@ const App = () => {
                            {MONTH_NAMES.map((month, index) => {
                              const income = getMonthlyIncome(index, selectedYear);
                              const isDeposited = depositStatus[`${selectedYear}-${index}`];
-                             const statusColor = isDeposited ? 'bg-green-100 text-green-700 border-green-200' : 'bg-white text-slate-500 border-slate-200';
-                             const statusText = isDeposited ? 'SUDAH DISETOR' : 'BELUM DISETOR';
+                             const statusColor = isDeposited ? 'bg-green-100 text-green-700 border-green-200' : 'bg-yellow-50 text-yellow-700 border-yellow-200';
+                             const statusText = isDeposited ? 'SUDAH DISETORKAN' : 'BELUM SETOR';
                              return (
-                               <div key={month} className={`p-4 rounded-2xl border-2 shadow-sm transition-all relative group hover:shadow-md ${statusColor}`}>
-                                  <div className="flex justify-between items-start mb-2">
-                                     <h4 className="text-sm font-bold uppercase tracking-wider">{month}</h4>
-                                     <button 
-                                        onClick={(e) => {
-                                           e.stopPropagation();
-                                           setSelectedMonthIndex(index);
-                                           setReportViewMode('detail');
-                                        }}
-                                        className="p-1.5 bg-white rounded-lg text-slate-700 hover:text-blue-600 shadow-sm border border-slate-100"
-                                        title="Buka Laporan"
-                                     >
-                                       <Printer size={16} />
-                                     </button>
+                               <button 
+                                 key={month} 
+                                 onClick={() => {
+                                   setSelectedMonthIndex(index);
+                                   setReportViewMode('detail');
+                                 }}
+                                 className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md hover:border-blue-300 transition-all text-left relative overflow-hidden"
+                               >
+                                  <div className="flex justify-between items-start mb-4">
+                                     <span className="text-xl font-black text-slate-800 opacity-30">{index + 1 < 10 ? `0${index + 1}` : index + 1}</span>
+                                     <Calendar size={20} className="text-blue-500 opacity-50" />
                                   </div>
-                                  <p className="text-lg font-black mb-3">{formatIDR(income)}</p>
-                                  <div className="flex items-center gap-1 text-[10px] font-bold uppercase opacity-80">
-                                      {isDeposited ? <CheckCircle2 size={12}/> : <Clock size={12}/>} {statusText}
+                                  <h4 className="text-lg font-bold text-slate-800 mb-1">{month}</h4>
+                                  <p className="text-xl font-black text-slate-700 mb-4">{formatIDR(income)}</p>
+                                  <div className={`text-[10px] font-bold px-2 py-1 rounded border inline-flex items-center gap-1 ${statusColor}`}>
+                                     {isDeposited ? <CheckCircle2 size={10} /> : <Clock size={10} />} {statusText}
                                   </div>
-                                  <button 
-                                     className="absolute inset-0 z-0" 
-                                     onClick={() => {
-                                        setSelectedMonthIndex(index);
-                                        setReportViewMode('detail');
-                                     }}
-                                  ></button>
-                               </div>
+                               </button>
                              );
                            })}
                         </div>
                      </>
                    ) : (
                      <>
-                        <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-6 print:hidden">
-                          <button onClick={() => setReportViewMode('grid')} className="flex items-center gap-2 text-slate-600 font-bold hover:text-blue-600 transition-colors"><ArrowLeft size={20} /> Kembali</button>
-                          <div className="flex gap-2">
+                        {/* Header Detail Admin */}
+                       <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-6 print:hidden">
+                          <button onClick={() => setReportViewMode('grid')} className="flex items-center gap-2 text-slate-600 font-bold hover:text-blue-600 transition-colors"><ArrowLeft size={20} /> Kembali ke Grid</button>
+                          <div className="flex gap-2 w-full md:w-auto">
+                             <button 
+                                onClick={toggleDepositStatus}
+                                className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all shadow-md ${depositStatus[`${selectedYear}-${selectedMonthIndex}`] ? 'bg-yellow-50 text-yellow-700 border border-yellow-200 hover:bg-yellow-100' : 'bg-green-600 text-white hover:bg-green-700'}`}
+                             >
+                                <Stamp size={18} /> 
+                                {depositStatus[`${selectedYear}-${selectedMonthIndex}`] ? 'Batalkan Status Setor' : 'Tandai Sudah Setor'}
+                             </button>
                              <button onClick={() => window.print()} className="bg-white border border-slate-300 text-slate-700 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-slate-50 transition-all shadow-sm"><Printer size={18} /> Print Biasa</button>
-                             <button onClick={handleDownloadPDF} className="bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-blue-700 transition-all shadow-lg"><Download size={18} /> Download PDF</button>
+                             <button onClick={handleDownloadPDF} className="bg-slate-800 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-slate-900 transition-all shadow-lg"><Download size={18} /> Download PDF</button>
                           </div>
-                        </div>
-                        
-                        <div ref={reportContentRef} className="bg-white p-8 md:p-12 w-full md:w-[210mm] mx-auto min-h-0 md:min-h-[297mm] relative print:p-0 print:w-full">
-                             <div className="text-center border-b-4 border-slate-800 pb-4 mb-6 relative">
+                       </div>
+                      
+                       <div ref={reportContentRef} className="bg-white p-8 md:p-12 w-full md:w-[210mm] mx-auto min-h-0 md:min-h-[297mm] relative print:p-0 print:w-full">
+                          <div className="text-center border-b-4 border-slate-800 pb-4 mb-6 relative">
                              <h1 className="text-2xl font-black text-slate-800 tracking-wide uppercase">Laporan Keuangan Kos</h1>
                              <p className="text-slate-500 text-sm font-medium mt-1">Periode Laporan</p>
                              <h2 className="text-lg font-bold text-blue-600 mt-1 uppercase border-2 border-blue-100 inline-block px-4 py-1 rounded bg-blue-50">{MONTH_NAMES[selectedMonthIndex]} {selectedYear}</h2>
@@ -1298,9 +1317,9 @@ const App = () => {
                              <div className="bg-slate-50 p-3 border border-slate-200 rounded-xl print:border-black"><p className="text-[10px] font-bold text-slate-500 uppercase mb-1">Total Transaksi</p><p className="text-xl font-black text-slate-800">{getFilteredPayments().length} <span className="text-xs font-normal text-slate-500">transaksi</span></p></div>
                           </div>
                           <div className="mb-8">
-                            <h3 className="font-bold text-slate-800 mb-2 text-sm border-l-4 border-blue-500 pl-3">Rincian Transaksi</h3>
+                             <h3 className="font-bold text-slate-800 mb-2 text-sm border-l-4 border-blue-500 pl-3">Rincian Transaksi</h3>
                             <div className="overflow-hidden border border-slate-300 rounded-lg">
-                               <table className="w-full text-[10px] text-left">
+                              <table className="w-full text-[10px] text-left">
                                 <thead className="bg-slate-100 text-slate-700 font-bold uppercase border-b border-slate-300 print:bg-slate-200">
                                   <tr><th className="px-2 py-2 border-r border-slate-300 w-1/6">Tanggal</th><th className="px-2 py-2 border-r border-slate-300 w-1/6">Kamar</th><th className="px-2 py-2 border-r border-slate-300 w-2/6">Keterangan</th><th className="px-2 py-2 text-right w-2/6">Jumlah</th></tr>
                                 </thead>
