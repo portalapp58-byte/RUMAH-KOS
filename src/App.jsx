@@ -541,10 +541,10 @@ const App = () => {
     if (!element) return;
 
     const opt = {
-      margin:       10, // Margin aman 10mm biar teks ga kepotong
+      margin:       5, // Margin 5mm
       filename:     `Laporan-Keuangan-${MONTH_NAMES[selectedMonthIndex]}-${selectedYear}.pdf`,
       image:        { type: 'jpeg', quality: 0.98 },
-      html2canvas:  { scale: 2, useCORS: true }, 
+      html2canvas:  { scale: 2, useCORS: true }, // Scale 2 agar tajam
       jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
     };
 
@@ -642,7 +642,7 @@ const App = () => {
             </button>
           </div>
           <div className="mt-6 text-center text-xs text-slate-400">
-            <p>Aplikasi Kode V.5.6 (Fix 1 Page PDF):</p>
+            <p>Aplikasi Kode V.5.5 (Clean White PDF):</p>
             <p>Support By Malang Florist Group</p>
           </div>
         </div>
@@ -1202,7 +1202,7 @@ const App = () => {
                         
                         {/* [REVISI] Kertas A4 Responsif: w-full di HP, tapi 210mm (A4) di layar besar/print */}
                         {/* NOTE: CLASS BORDER/SHADOW/ROUNDED DIHAPUS DISINI AGAR PDF BERSIH */}
-                        <div ref={reportContentRef} className="bg-white p-8 md:p-12 w-full md:w-[210mm] mx-auto relative print:p-0 print:w-full">
+                        <div ref={reportContentRef} className="bg-white p-8 md:p-12 w-full md:w-[210mm] mx-auto min-h-0 md:min-h-[297mm] relative print:p-0 print:w-full">
                           <div className="text-center border-b-4 border-slate-800 pb-4 mb-6 relative">
                              <h1 className="text-2xl font-black text-slate-800 tracking-wide uppercase">Laporan Keuangan Kos</h1>
                              <p className="text-slate-500 text-sm font-medium mt-1">Periode Laporan</p>
@@ -1415,7 +1415,7 @@ const App = () => {
                        
                        {/* [REVISI] Kertas A4 Responsif: w-full di HP, tapi 210mm (A4) di layar besar/print */}
                        {/* NOTE: CLASS BORDER/SHADOW/ROUNDED DIHAPUS DISINI AGAR PDF BERSIH */}
-                       <div ref={reportContentRef} className="bg-white p-8 md:p-12 w-full md:w-[210mm] mx-auto relative print:p-0 print:w-full">
+                       <div ref={reportContentRef} className="bg-white p-8 md:p-12 w-full md:w-[210mm] mx-auto min-h-0 md:min-h-[297mm] relative print:p-0 print:w-full">
                           {/* (Kop Laporan) */}
                           <div className="text-center border-b-4 border-slate-800 pb-4 mb-6 relative">
                              <h1 className="text-2xl font-black text-slate-800 tracking-wide uppercase">Laporan Keuangan Kos</h1>
