@@ -75,30 +75,34 @@ const getDaysOverdue = (dueDate) => {
   return diffDays > 0 ? diffDays : 0;
 };
 
-// Helper: Hitung Status Hutang (Nominal & Durasi)
+// [REVISI V.5.8] Helper: Hitung Status Hutang (Nominal & Durasi)
+// Fix: Menghapus pengecekan 'room.status === Paid'. Hutang dihitung murni dari tanggal.
 const getDebtCalculation = (room) => {
-  if (!room.resident || !room.nextPaymentDate || room.status === 'Paid') {
+  if (!room.resident || !room.nextPaymentDate) {
     return { months: 0, totalDebt: 0 };
   }
 
   const today = new Date();
+  // Reset jam hari ini ke 00:00 agar adil
+  today.setHours(0,0,0,0);
+  
   const dueDate = new Date(room.nextPaymentDate);
+  dueDate.setHours(0,0,0,0);
    
-  // Jika belum jatuh tempo, tidak ada hutang
-  if (today < dueDate) return { months: 0, totalDebt: 0 };
+  // Jika jatuh tempo masih di masa depan atau hari ini, tidak ada hutang
+  if (dueDate >= today) return { months: 0, totalDebt: 0 };
 
-  // Hitung selisih bulan
+  // Hitung selisih bulan (Logika Kasar)
   let diffMonths = (today.getFullYear() - dueDate.getFullYear()) * 12 + (today.getMonth() - dueDate.getMonth());
 
-  // Jika tanggal hari ini >= tanggal jatuh tempo, hitung bulan berjalan
+  // Koreksi tanggal: Jika tanggal hari ini >= tanggal jatuh tempo, hitung bulan berjalan sebagai hutang
   if (today.getDate() >= dueDate.getDate()) {
     diffMonths += 1; 
   }
 
-  // Minimal 1 bulan jika statusnya unpaid (untuk cover bulan berjalan)
+  // Minimal 1 bulan jika sudah lewat tanggalnya
   const debtMonths = diffMonths > 0 ? diffMonths : 1;
    
-  // Total Hutang = Bulan Telat * Harga Kamar + (Sisa Hutang Manual di DB jika ada)
   const totalDebt = (debtMonths * room.price) + (room.debt || 0);
 
   return { months: debtMonths, totalDebt: totalDebt };
@@ -395,7 +399,7 @@ const App = () => {
     setPaymentFormData({
       roomId: room.id,
       roomNumber: room.number,
-      resident: room.resident, // PENTING: Nama penghuni diambil di sini
+      resident: room.resident, 
       roomPrice: room.price, 
       amount: 0, 
       date: today,
@@ -439,18 +443,26 @@ const App = () => {
     }
 
     try {
-      // Update data di Firebase dengan Tanggal Baru hasil kalkulasi
+      // [REVISI V.5.8] Logic Penentuan Status
+      // Cek apakah New Due Date sudah melewati hari ini atau belum
+      const today = new Date();
+      today.setHours(0,0,0,0);
+      const newDue = new Date(preview.newDate);
+      newDue.setHours(0,0,0,0);
+
+      // Jika Tanggal Baru >= Hari Ini, maka LUNAS (Paid). Jika tidak, masih Unpaid.
+      const newStatus = newDue >= today ? 'Paid' : 'Unpaid';
+
       await updateDoc(doc(db, "rooms", paymentFormData.roomNumber), {
-        status: 'Paid', 
+        status: newStatus, 
         debt: 0, 
         nextPaymentDate: preview.newDate 
       });
 
-      // [UPDATE V.5.7] Menyimpan 'residentName' agar history tidak tertukar
       const newPayment = {
         id: Date.now(),
         roomId: paymentFormData.roomNumber,
-        residentName: paymentFormData.resident, // <-- LOGIKA BARU: Simpan Nama Penghuni
+        residentName: paymentFormData.resident,
         amount: paymentFormData.amount,
         date: paymentFormData.date,
         type: `Sewa (${preview.months} Bulan)`, 
@@ -462,7 +474,7 @@ const App = () => {
         if (room.id === paymentFormData.roomId) {
           return { 
             ...room, 
-            status: 'Paid', 
+            status: newStatus, 
             debt: 0, 
             nextPaymentDate: preview.newDate 
           };
@@ -502,7 +514,7 @@ const App = () => {
       const checkoutLog = {
         id: Date.now(),
         roomId: checkoutData.number,
-        residentName: checkoutData.resident, // Simpan nama saat checkout juga
+        residentName: checkoutData.resident, 
         amount: 0,
         date: new Date().toISOString().split('T')[0],
         type: 'Checkout / Keluar',
@@ -608,9 +620,11 @@ const App = () => {
 
   // --- LOGIC OWNER MONITOR ---
   const occupiedRooms = rooms.filter(r => r.resident).length;
+  // [REVISI V.5.8] Logic Overdue Owner Dashboard
   const overdueRooms = rooms.filter(r => {
     const debt = getDebtCalculation(r);
-    return r.resident && (r.status === 'Unpaid' || debt.totalDebt > 0);
+    // Masuk kategori overdue jika ada hutang > 0, tidak peduli status string-nya apa
+    return r.resident && debt.totalDebt > 0;
   });
   const currentMonthIncome = getMonthlyIncome(new Date().getMonth(), new Date().getFullYear());
 
@@ -644,7 +658,7 @@ const App = () => {
             </button>
           </div>
           <div className="mt-6 text-center text-xs text-slate-400">
-            <p>Aplikasi Kode V.5.7 (Logic Fix Tenant History):</p>
+            <p>Aplikasi Kode V.5.8 (Partial Payment Fix):</p>
             <p>Support By Malang Florist Group</p>
           </div>
         </div>
@@ -1084,9 +1098,10 @@ const App = () => {
                       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                         {rooms.map(room => {
                            const isOccupied = !!room.resident;
+                           // [REVISI V.5.8] UI menggunakan logic hutang yang sudah diperbaiki
                            const debtInfo = getDebtCalculation(room);
-                           const isOverdue = isOccupied && debtInfo.totalDebt > 0 && room.status !== 'Paid';
-                           const isPaid = room.status === 'Paid';
+                           const isOverdue = isOccupied && debtInfo.totalDebt > 0;
+                           const isPaid = isOccupied && debtInfo.totalDebt === 0;
 
                            let cardClass = 'bg-white border-slate-200 hover:border-blue-300';
                            let statusBadge = null;
@@ -1104,8 +1119,8 @@ const App = () => {
                                  cardClass = 'bg-green-50 border-green-300 hover:border-green-500';
                                  statusBadge = <span className="text-[10px] font-bold text-white bg-green-500 px-2 py-0.5 rounded-full">LUNAS</span>;
                              } else {
+                                 // Fallback (jarang terjadi dgn logic baru)
                                  cardClass = 'bg-yellow-50 border-yellow-300 hover:border-yellow-500';
-                                 // [REVISI] Mengubah teks TAGIH menjadi BELUM BAYAR agar konsisten dengan Admin
                                  statusBadge = <span className="text-[10px] font-bold text-yellow-700 bg-yellow-200 px-2 py-0.5 rounded-full">BELUM BAYAR</span>;
                              }
                            }
@@ -1205,7 +1220,7 @@ const App = () => {
                         
                         {/* [REVISI] Kertas A4 Responsif: w-full di HP, tapi 210mm (A4) di layar besar/print */}
                         {/* NOTE: CLASS BORDER/SHADOW/ROUNDED DIHAPUS DISINI AGAR PDF BERSIH */}
-                        <div ref={reportContentRef} className="bg-white p-8 md:p-12 w-full md:w-[210mm] mx-auto min-h-0 md:min-h-[297mm] relative print:p-0 print:w-full">
+                        <div ref={reportContentRef} className="bg-white p-8 md:p-12 w-full md:w-[210mm] mx-auto relative print:p-0 print:w-full">
                           <div className="text-center border-b-4 border-slate-800 pb-4 mb-6 relative">
                              <h1 className="text-2xl font-black text-slate-800 tracking-wide uppercase">Laporan Keuangan Kos</h1>
                              <p className="text-slate-500 text-sm font-medium mt-1">Periode Laporan</p>
@@ -1217,6 +1232,7 @@ const App = () => {
                              <div className="bg-slate-50 p-3 border border-slate-200 rounded-xl print:border-black"><p className="text-[10px] font-bold text-slate-500 uppercase mb-1">Total Pemasukan</p><p className="text-xl font-black text-slate-800">{formatIDR(getMonthlyIncome(selectedMonthIndex, selectedYear))}</p></div>
                              <div className="bg-slate-50 p-3 border border-slate-200 rounded-xl print:border-black"><p className="text-[10px] font-bold text-slate-500 uppercase mb-1">Total Transaksi</p><p className="text-xl font-black text-slate-800">{getFilteredPayments().length} <span className="text-xs font-normal text-slate-500">transaksi</span></p></div>
                           </div>
+                          {/* (Tabel) */}
                           <div className="mb-8">
                             <h3 className="font-bold text-slate-800 mb-2 text-sm border-l-4 border-blue-500 pl-3">Rincian Transaksi</h3>
                             <div className="overflow-hidden border border-slate-300 rounded-lg">
@@ -1231,6 +1247,7 @@ const App = () => {
                               </table>
                             </div>
                           </div>
+                          {/* (Footer) */}
                           <div className="flex justify-between mt-12 px-8 break-inside-avoid"><div className="text-center"><p className="text-xs font-medium text-slate-600 mb-12">Diserahkan Oleh,</p><p className="font-bold text-sm text-slate-800 border-b border-slate-400 pb-1 px-4">Pengelola Kos</p></div><div className="text-center"><p className="text-xs font-medium text-slate-600 mb-12">Diterima Oleh,</p><p className="font-bold text-sm text-slate-800 border-b border-slate-400 pb-1 px-4">Pemilik Kos</p></div></div>
                           <div className="mt-8 text-center text-[8px] text-slate-400 border-t border-slate-100 pt-2 print:fixed print:bottom-4 print:left-0 print:right-0">Dicetak otomatis oleh Sistem Manajemen Pro-Kos pada {new Date().toLocaleString('id-ID')}</div>
                        </div>
@@ -1263,9 +1280,10 @@ const App = () => {
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                     {rooms.map(room => {
                       const isOccupied = !!room.resident;
+                      // [REVISI V.5.8] UI menggunakan logic hutang yang sudah diperbaiki
                       const debtInfo = getDebtCalculation(room);
-                      const isOverdue = isOccupied && debtInfo.totalDebt > 0 && room.status !== 'Paid';
-                      const isPaid = room.status === 'Paid';
+                      const isOverdue = isOccupied && debtInfo.totalDebt > 0;
+                      const isPaid = isOccupied && debtInfo.totalDebt === 0;
 
                       let cardClass = 'bg-white border-slate-200 hover:border-blue-300';
                       let statusBadge = null;
@@ -1283,6 +1301,7 @@ const App = () => {
                           cardClass = 'bg-green-50 border-green-300 hover:border-green-500';
                           statusBadge = <span className="text-[10px] font-bold text-white bg-green-500 px-2 py-0.5 rounded-full">LUNAS</span>;
                         } else {
+                          // Fallback (jarang terjadi dgn logic baru)
                           cardClass = 'bg-yellow-50 border-yellow-300 hover:border-yellow-500';
                           statusBadge = <span className="text-[10px] font-bold text-yellow-700 bg-yellow-200 px-2 py-0.5 rounded-full">BELUM BAYAR</span>;
                         }
@@ -1418,7 +1437,7 @@ const App = () => {
                        
                        {/* [REVISI] Kertas A4 Responsif: w-full di HP, tapi 210mm (A4) di layar besar/print */}
                        {/* NOTE: CLASS BORDER/SHADOW/ROUNDED DIHAPUS DISINI AGAR PDF BERSIH */}
-                       <div ref={reportContentRef} className="bg-white p-8 md:p-12 w-full md:w-[210mm] mx-auto min-h-0 md:min-h-[297mm] relative print:p-0 print:w-full">
+                       <div ref={reportContentRef} className="bg-white p-8 md:p-12 w-full md:w-[210mm] mx-auto relative print:p-0 print:w-full">
                           {/* (Kop Laporan) */}
                           <div className="text-center border-b-4 border-slate-800 pb-4 mb-6 relative">
                              <h1 className="text-2xl font-black text-slate-800 tracking-wide uppercase">Laporan Keuangan Kos</h1>
