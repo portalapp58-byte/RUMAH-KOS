@@ -35,7 +35,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-// --- KONFIGURASI & HELPER V.6.2 (STABILIZED) ---
+// --- KONFIGURASI & HELPER V.6.3 ---
 
 // Format Mata Uang IDR
 const formatIDR = (amount) => {
@@ -46,11 +46,11 @@ const formatIDR = (amount) => {
   }).format(amount);
 };
 
-// Format Tanggal Indo (Safety Added)
+// Format Tanggal Indo
 const formatDateIndo = (dateStr) => {
   if (!dateStr) return '-';
   const date = new Date(dateStr);
-  if (isNaN(date.getTime())) return '-'; // Return strip jika tanggal error
+  if (isNaN(date.getTime())) return '-'; 
   return date.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
 };
 
@@ -63,28 +63,25 @@ const addMonths = (dateStr, months) => {
   return date.toISOString().split('T')[0];
 };
 
-// --- LOGIKA STATUS V.6.2 (ANTI CRASH) ---
+// --- LOGIKA STATUS V.6.3 (LABEL LUNAS) ---
 const getStatusV6 = (dueDateStr, residentName) => {
     // 1. Jika tidak ada penghuni -> KOSONG (Putih)
     if (!residentName) return { code: 'EMPTY', color: 'white', label: 'Kosong' };
 
-    // Safety: Jika tanggal error/kosong, anggap aman dulu agar tidak crash
-    if (!dueDateStr) return { code: 'SAFE', color: 'green', label: 'AMAN', daysLeft: 0 };
+    if (!dueDateStr) return { code: 'SAFE', color: 'green', label: 'LUNAS', daysLeft: 0 };
 
     const today = new Date();
     today.setHours(0,0,0,0);
     
     const due = new Date(dueDateStr);
-    // Safety: Jika format tanggal database rusak
     if (isNaN(due.getTime())) return { code: 'SAFE', color: 'green', label: 'Data Tanggal Error', daysLeft: 0 };
-    
     due.setHours(0,0,0,0);
 
-    // Hitung selisih hari (Positif = Belum jatuh tempo, Negatif = Lewat)
+    // Hitung selisih hari
     const diffTime = due - today;
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-    // 2. MERAH (Telat / Nunggak) -> Lewat hari H (diffDays < 0)
+    // 2. MERAH (Telat)
     if (diffDays < 0) {
         return { 
             code: 'OVERDUE', 
@@ -94,7 +91,7 @@ const getStatusV6 = (dueDateStr, residentName) => {
         };
     }
 
-    // 3. KUNING (Tagih / Warning) -> H-5 sampai Hari H (0 <= diffDays <= 5)
+    // 3. KUNING (H-5 sampai Hari H)
     if (diffDays >= 0 && diffDays <= 5) {
         return { 
             code: 'WARNING', 
@@ -104,34 +101,29 @@ const getStatusV6 = (dueDateStr, residentName) => {
         };
     }
 
-    // 4. HIJAU (Aman / Lunas) -> Masih jauh (> 5 hari)
+    // 4. HIJAU (LUNAS / AMAN) -> Masih jauh (> 5 hari)
     return { 
         code: 'SAFE', 
         color: 'green', 
-        label: 'AMAN',
+        label: 'LUNAS', // UBAH LABEL DARI AMAN KE LUNAS
         daysLeft: diffDays
     };
 };
 
-// Helper: Format Durasi Telat (Safety Added)
+// Helper: Format Durasi Telat
 const formatOverdueDuration = (dueDateStr) => {
     if(!dueDateStr) return "Data Error";
-    
     const today = new Date();
     today.setHours(0,0,0,0);
     const due = new Date(dueDateStr);
-    
     if (isNaN(due.getTime())) return "Format Error";
-    
     due.setHours(0,0,0,0);
     
-    // Total hari telat
     const diffTime = today - due;
     const totalDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
     if (totalDays <= 0) return null;
 
-    // Logika Bulan & Hari (Asumsi 30 hari/bulan)
     if (totalDays < 30) {
         return `${totalDays} Hari`;
     } else {
@@ -141,52 +133,42 @@ const formatOverdueDuration = (dueDateStr) => {
     }
 };
 
-// Helper: Hitung Total Hutang (Safety Added)
+// Helper: Hitung Total Hutang
 const getDebtCalculation = (room) => {
   if (!room.resident || !room.nextPaymentDate) {
     return { months: 0, totalDebt: 0 };
   }
-  
   const today = new Date();
   today.setHours(0,0,0,0);
   const dueDate = new Date(room.nextPaymentDate);
-  
-  if (isNaN(dueDate.getTime())) return { months: 0, totalDebt: 0 }; // Safety Return
-  
+  if (isNaN(dueDate.getTime())) return { months: 0, totalDebt: 0 }; 
   dueDate.setHours(0,0,0,0);
 
   if (dueDate >= today) return { months: 0, totalDebt: 0 };
 
-  // Hitung bulan berjalan yang belum dibayar
   let diffMonths = (today.getFullYear() - dueDate.getFullYear()) * 12 + (today.getMonth() - dueDate.getMonth());
-  
-  // Jika tanggal hari ini >= tanggal jatuh tempo bulan ini, hitung masuk bulan baru
   if (today.getDate() >= dueDate.getDate()) {
     diffMonths += 1; 
   }
 
-  // Minimal telat 1 bulan jika hari ini > jatuh tempo
   const debtMonths = diffMonths > 0 ? diffMonths : 1;
   const totalDebt = (debtMonths * room.price) + (room.debt || 0);
 
   return { months: debtMonths, totalDebt: totalDebt };
 };
 
-// Konstanta Nama Bulan
 const MONTH_NAMES = [
   "Januari", "Februari", "Maret", "April", "Mei", "Juni",
   "Juli", "Agustus", "September", "Oktober", "November", "Desember"
 ];
 
 const App = () => {
-  // --- STATE UTAMA ---
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [userRole, setUserRole] = useState(null); // 'owner' or 'admin'
+  const [userRole, setUserRole] = useState(null); 
   const [activeTab, setActiveTab] = useState('dashboard');
   const [loginCode, setLoginCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  // --- STATE MODAL & FORM ---
   const [selectedRoom, setSelectedRoom] = useState(null); 
   const [editingId, setEditingId] = useState(null); 
   const [showRoomForm, setShowRoomForm] = useState(false);
@@ -199,29 +181,24 @@ const App = () => {
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
   const [checkoutData, setCheckoutData] = useState(null);
 
-  // --- STATE BARU (CHECKBOX AUTO PAYMENT) ---
   const [enableAutoPayment, setEnableAutoPayment] = useState(true);
 
-  // --- STATE LAPORAN ---
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [reportViewMode, setReportViewMode] = useState('grid');
   const [selectedMonthIndex, setSelectedMonthIndex] = useState(null);
   const [depositStatus, setDepositStatus] = useState({});
   const reportContentRef = useRef(null);
 
-  // --- CONFIG ---
   const [config, setConfig] = useState({
     ownerCode: 'OWNER123',
     adminCode: 'ADMIN456'
   });
 
-  // --- INITIAL DATA GENERATOR ---
   const generateInitialRooms = () => {
     return Array.from({ length: 20 }, (_, i) => {
       const num = i + 1;
       const roomNumber = `ROOM ${num < 10 ? '0' + num : num}`;
       const isFloor1 = num <= 10;
-       
       return {
         id: num,
         number: roomNumber,
@@ -243,11 +220,9 @@ const App = () => {
   const [rooms, setRooms] = useState([]); 
   const [payments, setPayments] = useState([]);
 
-  // --- FUNGSI LOAD DATA (REFRESH) ---
   const loadAllData = async () => {
     setIsLoading(true);
     try {
-      // 1. Kamar
       const snapshot = await getDocs(collection(db, "rooms"));
       if (snapshot.empty) {
         const dataAwal = generateInitialRooms();
@@ -260,18 +235,14 @@ const App = () => {
         dataDariDB.sort((a, b) => a.id - b.id);
         setRooms(dataDariDB);
       }
-      // 2. Payments
       const paySnapshot = await getDocs(collection(db, "payments"));
       const payData = paySnapshot.docs.map(doc => doc.data());
       payData.sort((a, b) => b.id - a.id);
       setPayments(payData);
-      // 3. Config
       const configSnap = await getDoc(doc(db, "settings", "access_codes"));
       if (configSnap.exists()) setConfig(configSnap.data());
-      // 4. Deposits
       const depositSnap = await getDoc(doc(db, "settings", "deposits"));
       if (depositSnap.exists()) setDepositStatus(depositSnap.data());
-
     } catch (error) {
       console.error("Error loading data:", error);
       alert("Gagal memuat data: " + error.message);
@@ -284,14 +255,12 @@ const App = () => {
     loadAllData();
   }, []);
 
-  // --- FORM STATES ---
   const initialRoomState = { number: '', price: '', type: '', floor: '', bathroom: 'Dalam', desc: '' };
   const [roomFormData, setRoomFormData] = useState(initialRoomState);
   const initialResidentState = { name: '', entryDate: '', nextPaymentDate: '', ktpPhoto: null };
   const [residentFormData, setResidentFormData] = useState(initialResidentState);
   const [editResidentData, setEditResidentData] = useState({ roomId: null, name: '', entryDate: '', nextPaymentDate: '' });
 
-  // --- AUTH ---
   const handleLogin = () => {
     if (loginCode === config.ownerCode) {
       setUserRole('owner');
@@ -313,7 +282,6 @@ const App = () => {
     setActiveTab('dashboard');
   };
 
-  // --- ACTIONS ---
   const openEditRoomForm = (room) => {
     setRoomFormData({
       number: room.number, price: room.price, type: room.type, 
@@ -348,7 +316,7 @@ const App = () => {
     const nextMonth = addMonths(today, 1);
     setSelectedRoomForResident(room);
     setResidentFormData({ ...initialResidentState, entryDate: today, nextPaymentDate: nextMonth });
-    setEnableAutoPayment(true); // Default true
+    setEnableAutoPayment(true); 
     setShowResidentForm(true);
   };
 
@@ -365,17 +333,21 @@ const App = () => {
     }
   };
 
-  // LOGIC SIMPAN PENGHUNI + KONTROL MANUAL
+  // --- LOGIC SIMPAN V.6.3 (FIX STATUS) ---
   const handleSaveResident = async () => {
     if (!residentFormData.name || !residentFormData.entryDate) {
       alert("Nama dan Tanggal Masuk wajib diisi!");
       return;
     }
     try {
+      // FIX V.6.3: Jika TIDAK Auto Payment, Jatuh Tempo = Tanggal Masuk (Hari Ini).
+      // Sehingga status langsung WARNING (Tagih) atau MERAH.
+      const finalNextDueDate = enableAutoPayment ? residentFormData.nextPaymentDate : residentFormData.entryDate;
+
       const dataUpdate = {
         resident: residentFormData.name,
         entryDate: residentFormData.entryDate,
-        nextPaymentDate: residentFormData.nextPaymentDate,
+        nextPaymentDate: finalNextDueDate, // Gunakan tanggal yang sudah disesuaikan
         ktpPhoto: residentFormData.ktpPhoto || "",
         status: 'Unpaid',
         debt: 0
@@ -388,7 +360,6 @@ const App = () => {
       const roomPrice = selectedRoomForResident.price || 0;
       let newPaymentLog = null;
 
-      // Cek Status Checkbox (enableAutoPayment)
       if (enableAutoPayment && nextDue > entry && roomPrice > 0) {
           const monthsPaid = (nextDue.getFullYear() - entry.getFullYear()) * 12 + (nextDue.getMonth() - entry.getMonth());
           if (monthsPaid > 0) {
@@ -418,7 +389,7 @@ const App = () => {
       if (newPaymentLog) {
           alert(`Penghuni disimpan & Pembayaran otomatis sebesar ${formatIDR(newPaymentLog.amount)} tercatat!`);
       } else {
-          alert("Data penghuni disimpan. Pembayaran belum dicatat (Mode Manual). Silakan klik tombol 'Bayar' jika ingin menginput pembayaran.");
+          alert("Data penghuni disimpan. Pembayaran BELUM DICATAT. \n\nStatus kamar akan menjadi 'BELUM BAYAR / TAGIH HARI INI' karena Anda memilih manual.");
       }
     } catch (error) {
       console.error(error);
@@ -488,7 +459,6 @@ const App = () => {
 
     const currentDue = new Date(paymentFormData.currentDueDateRaw);
     const newDueObj = new Date(currentDue);
-    // Safety check date
     if(isNaN(newDueObj.getTime())) {
        return { months: 0, remainder: 0, newDate: '', isValid: false };
     }
@@ -646,7 +616,6 @@ const App = () => {
     }
   };
 
-  // --- LOGIC OWNER MONITOR ---
   const occupiedRooms = rooms.filter(r => r.resident).length;
   const overdueRooms = rooms.filter(r => {
       const statusV6 = getStatusV6(r.nextPaymentDate, r.resident);
@@ -655,7 +624,6 @@ const App = () => {
   const currentMonthIncome = getMonthlyIncome(new Date().getMonth(), new Date().getFullYear());
 
 
-  // --- VIEW LOGIN ---
   if (!isLoggedIn) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
@@ -684,7 +652,7 @@ const App = () => {
             </button>
           </div>
           <div className="mt-6 text-center text-xs text-slate-400">
-            <p>Aplikasi Kode V.6.2 (Stabilized & Manual Pay Option):</p>
+            <p>Aplikasi Kode V.6.3 (Fix Logic Manual Payment & Label LUNAS):</p>
             <p>Support By Malang Florist Group</p>
           </div>
         </div>
@@ -808,7 +776,7 @@ const App = () => {
             </div>
           )}
 
-          {/* 2. Registrasi Penghuni (UPDATE: CHECKBOX) */}
+          {/* 2. Registrasi Penghuni */}
           {showResidentForm && (
             <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm print:hidden">
               <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200">
@@ -823,7 +791,7 @@ const App = () => {
                       <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Jadwal Bayar Selanjutnya</label><input type="date" className="w-full px-3 py-2 border rounded-lg" value={residentFormData.nextPaymentDate} onChange={e => setResidentFormData({...residentFormData, nextPaymentDate: e.target.value})} /></div>
                     </div>
                      
-                     {/* CHECKBOX AUTO PAYMENT V.6.1 */}
+                     {/* CHECKBOX AUTO PAYMENT */}
                      <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 flex items-center gap-3 mt-2">
                         <input 
                             type="checkbox" 
@@ -834,7 +802,7 @@ const App = () => {
                         />
                         <label htmlFor="autoPay" className="text-sm font-bold text-slate-700 cursor-pointer select-none">
                             Catat Pembayaran Awal Otomatis?
-                            <p className="text-[10px] text-slate-500 font-normal mt-0.5">Jika dicentang, sistem otomatis membuat tagihan LUNAS. Jika tidak, hanya simpan data penghuni.</p>
+                            <p className="text-[10px] text-slate-500 font-normal mt-0.5">Jika dicentang, sistem otomatis membuat tagihan LUNAS. Jika tidak, hanya simpan data penghuni (status BELUM BAYAR).</p>
                         </label>
                      </div>
 
@@ -907,7 +875,7 @@ const App = () => {
             </div>
           )}
 
-          {/* 5. MODAL PEMBAYARAN PINTAR (UPDATE V.6.0: INFO HUTANG LENGKAP) */}
+          {/* 5. MODAL PEMBAYARAN PINTAR */}
           {showPaymentModal && (
             <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm print:hidden">
               <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200">
@@ -917,7 +885,6 @@ const App = () => {
                 </div>
                 
                 <div className="p-6 space-y-6">
-                    {/* INFO TAGIHAN V.6.0 */}
                     <div className="bg-slate-50 rounded-xl border border-slate-200 p-4">
                         <div className="flex justify-between items-center mb-2">
                              <h5 className="text-xs font-black text-slate-400 uppercase tracking-wide">Info Tagihan - {paymentFormData.roomNumber}</h5>
@@ -956,7 +923,6 @@ const App = () => {
                             </div>
                         </div>
                         
-                        {/* Total Hutang Kumulatif jika telat > 1 bulan */}
                         {(() => {
                            const currentRoom = rooms.find(r => r.id === paymentFormData.roomId);
                            if(currentRoom) {
@@ -976,7 +942,6 @@ const App = () => {
 
                     <hr className="border-dashed border-slate-200" />
 
-                    {/* INPUT PEMBAYARAN */}
                     <div>
                         <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Masukkan Nominal Diterima</label>
                         <div className="relative">
@@ -1002,7 +967,6 @@ const App = () => {
                         </div>
                     </div>
 
-                    {/* KALKULASI PREVIEW */}
                     {(() => {
                         const preview = calculatePaymentPreview();
                         return (
@@ -1075,7 +1039,7 @@ const App = () => {
                 </div>
                   
                 <div className="p-6 space-y-6">
-                    {/* INFO STATUS V.6.0 */}
+                    {/* INFO STATUS V.6.3 */}
                     {(() => {
                         const statusV6 = getStatusV6(selectedRoom.nextPaymentDate, selectedRoom.resident);
                         let bgClass = 'bg-slate-50 border-slate-200';
@@ -1093,7 +1057,7 @@ const App = () => {
                                 <div className="mt-3 pt-3 border-t border-dashed border-slate-300">
                                    {selectedRoom.resident ? (
                                       <>
-                                         {statusV6.code === 'SAFE' && <p className="text-green-600 font-bold flex items-center gap-1"><CheckCircle2 size={16}/> Aman (Belum Jatuh Tempo)</p>}
+                                         {statusV6.code === 'SAFE' && <p className="text-green-600 font-bold flex items-center gap-1"><CheckCircle2 size={16}/> LUNAS (Masa Sewa Aktif)</p>}
                                          {statusV6.code === 'WARNING' && <p className="text-yellow-600 font-bold flex items-center gap-1"><AlertCircle size={16}/> Mendekati Jatuh Tempo (Segera Tagih)</p>}
                                          {statusV6.code === 'OVERDUE' && (
                                              <div>
@@ -1140,12 +1104,12 @@ const App = () => {
               {/* MENU 1: DASHBOARD */}
               {activeTab === 'dashboard' && (
                 <div className="space-y-6">
-                  {/* Legend Warna Grid V.6.0 */}
+                  {/* Legend Warna Grid V.6.3 */}
                   <div className="flex flex-col md:flex-row justify-between items-start md:items-center print:hidden gap-4">
                     <h3 className="font-bold text-lg text-slate-800">Status Grid Kamar</h3>
                     <div className="flex flex-wrap gap-3">
                        <span className="flex items-center gap-1 text-xs text-slate-600 bg-white px-2 py-1 rounded border"><div className="w-3 h-3 bg-white border border-slate-300 rounded-full"></div> Kosong</span>
-                       <span className="flex items-center gap-1 text-xs text-slate-600 bg-white px-2 py-1 rounded border"><div className="w-3 h-3 bg-green-500 rounded-full"></div> Aman</span>
+                       <span className="flex items-center gap-1 text-xs text-slate-600 bg-white px-2 py-1 rounded border"><div className="w-3 h-3 bg-green-500 rounded-full"></div> Lunas</span>
                        <span className="flex items-center gap-1 text-xs text-slate-600 bg-white px-2 py-1 rounded border"><div className="w-3 h-3 bg-yellow-400 rounded-full"></div> H-5 Tagih</span>
                        <span className="flex items-center gap-1 text-xs text-slate-600 bg-white px-2 py-1 rounded border"><div className="w-3 h-3 bg-red-500 rounded-full"></div> Telat</span>
                     </div>
@@ -1179,7 +1143,7 @@ const App = () => {
                           );
                       } else if (statusV6.code === 'SAFE') {
                           cardClass = 'bg-green-50 border-green-300 hover:border-green-500';
-                          statusBadge = <span className="text-[10px] font-bold text-white bg-green-500 px-2 py-0.5 rounded-full">AMAN</span>;
+                          statusBadge = <span className="text-[10px] font-bold text-white bg-green-500 px-2 py-0.5 rounded-full">LUNAS</span>;
                       }
 
                       return (
