@@ -5,7 +5,7 @@ import {
   X, Users, ChevronRight, Info, Upload, FileText, DoorOpen, 
   CalendarCheck, Wallet, CheckCircle2, Calendar, ArrowLeft, 
   Stamp, Clock, Save, Lock, TrendingUp, Calculator, UserCog, Download,
-  RefreshCw 
+  RefreshCw, AlertTriangle
 } from 'lucide-react';
 import html2pdf from 'html2pdf.js';
 
@@ -35,7 +35,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-// --- KONFIGURASI & HELPER ---
+// --- KONFIGURASI & HELPER V.6.0 ---
 
 // Format Mata Uang IDR
 const formatIDR = (amount) => {
@@ -46,14 +46,14 @@ const formatIDR = (amount) => {
   }).format(amount);
 };
 
-// Format Tanggal Indo (Contoh: 10 Februari 2024)
+// Format Tanggal Indo
 const formatDateIndo = (dateStr) => {
   if (!dateStr) return '-';
   const date = new Date(dateStr);
   return date.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
 };
 
-// Helper: Tambah Bulan untuk Next Payment
+// Helper: Tambah Bulan
 const addMonths = (dateStr, months) => {
   if (!dateStr) return '';
   const date = new Date(dateStr);
@@ -61,38 +61,93 @@ const addMonths = (dateStr, months) => {
   return date.toISOString().split('T')[0];
 };
 
-// Helper: Hitung selisih hari (untuk status telat)
-const getDaysOverdue = (dueDate) => {
-  if (!dueDate) return 0;
-  const today = new Date();
-  const due = new Date(dueDate);
-  // Reset jam agar hitungan murni hari
-  today.setHours(0, 0, 0, 0);
-  due.setHours(0, 0, 0, 0);
-  const diffTime = today - due;
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  return diffDays > 0 ? diffDays : 0;
+// --- LOGIKA STATUS V.6.0 (CORE LOGIC) ---
+const getStatusV6 = (dueDateStr, residentName) => {
+    // 1. Jika tidak ada penghuni -> KOSONG (Putih)
+    if (!residentName) return { code: 'EMPTY', color: 'white', label: 'Kosong' };
+
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    const due = new Date(dueDateStr);
+    due.setHours(0,0,0,0);
+
+    // Hitung selisih hari (Positif = Belum jatuh tempo, Negatif = Lewat)
+    const diffTime = due - today;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    // 2. MERAH (Telat / Nunggak) -> Lewat hari H (diffDays < 0)
+    if (diffDays < 0) {
+        return { 
+            code: 'OVERDUE', 
+            color: 'red', 
+            label: 'TELAT', 
+            daysLate: Math.abs(diffDays) 
+        };
+    }
+
+    // 3. KUNING (Tagih / Warning) -> H-5 sampai Hari H (0 <= diffDays <= 5)
+    if (diffDays >= 0 && diffDays <= 5) {
+        return { 
+            code: 'WARNING', 
+            color: 'yellow', 
+            label: diffDays === 0 ? 'HARI INI!' : `H-${diffDays}`,
+            daysLeft: diffDays
+        };
+    }
+
+    // 4. HIJAU (Aman / Lunas) -> Masih jauh (> 5 hari)
+    return { 
+        code: 'SAFE', 
+        color: 'green', 
+        label: 'AMAN',
+        daysLeft: diffDays
+    };
 };
 
-// Helper: Hitung Status Hutang (Nominal & Durasi)
+// Helper: Format Durasi Telat (Multi-Month Logic)
+const formatOverdueDuration = (dueDateStr) => {
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    const due = new Date(dueDateStr);
+    due.setHours(0,0,0,0);
+    
+    // Total hari telat
+    const diffTime = today - due;
+    const totalDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (totalDays <= 0) return null;
+
+    // Logika Bulan & Hari (Asumsi 30 hari/bulan untuk simplifikasi display)
+    if (totalDays < 30) {
+        return `${totalDays} Hari`;
+    } else {
+        const months = Math.floor(totalDays / 30);
+        const days = totalDays % 30;
+        return days > 0 ? `${months} Bulan ${days} Hari` : `${months} Bulan`;
+    }
+};
+
+// Helper: Hitung Total Hutang (Financial)
 const getDebtCalculation = (room) => {
   if (!room.resident || !room.nextPaymentDate) {
     return { months: 0, totalDebt: 0 };
   }
-
   const today = new Date();
   today.setHours(0,0,0,0);
-  
   const dueDate = new Date(room.nextPaymentDate);
   dueDate.setHours(0,0,0,0);
 
   if (dueDate >= today) return { months: 0, totalDebt: 0 };
 
+  // Hitung bulan berjalan yang belum dibayar
   let diffMonths = (today.getFullYear() - dueDate.getFullYear()) * 12 + (today.getMonth() - dueDate.getMonth());
+  
+  // Jika tanggal hari ini >= tanggal jatuh tempo bulan ini, hitung masuk bulan baru
   if (today.getDate() >= dueDate.getDate()) {
     diffMonths += 1; 
   }
 
+  // Minimal telat 1 bulan jika hari ini > jatuh tempo
   const debtMonths = diffMonths > 0 ? diffMonths : 1;
   const totalDebt = (debtMonths * room.price) + (room.debt || 0);
 
@@ -111,18 +166,16 @@ const App = () => {
   const [userRole, setUserRole] = useState(null); // 'owner' or 'admin'
   const [activeTab, setActiveTab] = useState('dashboard');
   const [loginCode, setLoginCode] = useState('');
-  const [isLoading, setIsLoading] = useState(false); // State untuk loading refresh
+  const [isLoading, setIsLoading] = useState(false);
 
   // --- STATE MODAL & FORM ---
-  const [selectedRoom, setSelectedRoom] = useState(null); // Untuk detail dashboard
+  const [selectedRoom, setSelectedRoom] = useState(null); 
   const [editingId, setEditingId] = useState(null); 
-  const [showRoomForm, setShowRoomForm] = useState(false); // Edit Fisik Kamar
-   
-  const [showResidentForm, setShowResidentForm] = useState(false); // Tambah Penghuni Baru
-  const [showEditResidentForm, setShowEditResidentForm] = useState(false); // [BARU] Edit Data Penghuni Existing
-  const [showResidentDetail, setShowResidentDetail] = useState(false); // Detail Penghuni
+  const [showRoomForm, setShowRoomForm] = useState(false);
+  const [showResidentForm, setShowResidentForm] = useState(false);
+  const [showEditResidentForm, setShowEditResidentForm] = useState(false);
+  const [showResidentDetail, setShowResidentDetail] = useState(false);
   const [selectedRoomForResident, setSelectedRoomForResident] = useState(null); 
-
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentFormData, setPaymentFormData] = useState({ roomId: null, amount: 0, date: '', method: 'Transfer', nextDueDate: '', currentDueDateRaw: '' });
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
@@ -130,9 +183,9 @@ const App = () => {
 
   // --- STATE LAPORAN ---
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-  const [reportViewMode, setReportViewMode] = useState('grid'); // 'grid' atau 'detail'
-  const [selectedMonthIndex, setSelectedMonthIndex] = useState(null); // 0-11
-  const [depositStatus, setDepositStatus] = useState({}); // { "2024-0": true } -> Format YYYY-MonthIndex
+  const [reportViewMode, setReportViewMode] = useState('grid');
+  const [selectedMonthIndex, setSelectedMonthIndex] = useState(null);
+  const [depositStatus, setDepositStatus] = useState({});
   const reportContentRef = useRef(null);
 
   // --- CONFIG ---
@@ -141,7 +194,7 @@ const App = () => {
     adminCode: 'ADMIN456'
   });
 
-  // --- INITIAL DATA GENERATOR (BERSIH / KOSONG) ---
+  // --- INITIAL DATA GENERATOR ---
   const generateInitialRooms = () => {
     return Array.from({ length: 20 }, (_, i) => {
       const num = i + 1;
@@ -167,15 +220,14 @@ const App = () => {
   };
 
   const [rooms, setRooms] = useState([]); 
-  const [payments, setPayments] = useState([]); // Riwayat transaksi
+  const [payments, setPayments] = useState([]);
 
-  // --- FUNGSI LOAD DATA (DIPISAH SUPAYA BISA DI-REFRESH) ---
+  // --- FUNGSI LOAD DATA (REFRESH) ---
   const loadAllData = async () => {
     setIsLoading(true);
     try {
-      // 1. Ambil Data Kamar
+      // 1. Kamar
       const snapshot = await getDocs(collection(db, "rooms"));
-        
       if (snapshot.empty) {
         const dataAwal = generateInitialRooms();
         setRooms(dataAwal);
@@ -187,24 +239,17 @@ const App = () => {
         dataDariDB.sort((a, b) => a.id - b.id);
         setRooms(dataDariDB);
       }
-
-      // 2. Ambil Riwayat Pembayaran (Payments)
+      // 2. Payments
       const paySnapshot = await getDocs(collection(db, "payments"));
       const payData = paySnapshot.docs.map(doc => doc.data());
       payData.sort((a, b) => b.id - a.id);
       setPayments(payData);
-
-      // 3. Ambil Konfigurasi Password
+      // 3. Config
       const configSnap = await getDoc(doc(db, "settings", "access_codes"));
-      if (configSnap.exists()) {
-        setConfig(configSnap.data());
-      }
-
-      // 4. Ambil Status Setor Laporan
+      if (configSnap.exists()) setConfig(configSnap.data());
+      // 4. Deposits
       const depositSnap = await getDoc(doc(db, "settings", "deposits"));
-      if (depositSnap.exists()) {
-        setDepositStatus(depositSnap.data());
-      }
+      if (depositSnap.exists()) setDepositStatus(depositSnap.data());
 
     } catch (error) {
       console.error("Error loading data:", error);
@@ -214,7 +259,6 @@ const App = () => {
     }
   };
 
-  // --- USE EFFECT: LOAD DATA DARI FIREBASE (AUTO RUN) ---
   useEffect(() => {
     loadAllData();
   }, []);
@@ -222,13 +266,11 @@ const App = () => {
   // --- FORM STATES ---
   const initialRoomState = { number: '', price: '', type: '', floor: '', bathroom: 'Dalam', desc: '' };
   const [roomFormData, setRoomFormData] = useState(initialRoomState);
-
   const initialResidentState = { name: '', entryDate: '', nextPaymentDate: '', ktpPhoto: null };
   const [residentFormData, setResidentFormData] = useState(initialResidentState);
-  
   const [editResidentData, setEditResidentData] = useState({ roomId: null, name: '', entryDate: '', nextPaymentDate: '' });
 
-  // --- LOGIC AUTH ---
+  // --- AUTH ---
   const handleLogin = () => {
     if (loginCode === config.ownerCode) {
       setUserRole('owner');
@@ -250,7 +292,7 @@ const App = () => {
     setActiveTab('dashboard');
   };
 
-  // --- LOGIC ROOMS (ADMIN) ---
+  // --- ACTIONS ---
   const openEditRoomForm = (room) => {
     setRoomFormData({
       number: room.number, price: room.price, type: room.type, 
@@ -260,7 +302,6 @@ const App = () => {
     setShowRoomForm(true);
   };
 
-  // --- SIMPAN EDIT FISIK KAMAR ---
   const handleSaveRoom = async () => {
     if (editingId) {
       try {
@@ -281,11 +322,9 @@ const App = () => {
     setShowRoomForm(false);
   };
 
-  // --- LOGIC RESIDENT REGISTRATION (ADMIN) ---
   const openResidentRegistration = (room) => {
     const today = new Date().toISOString().split('T')[0];
     const nextMonth = addMonths(today, 1);
-    
     setSelectedRoomForResident(room);
     setResidentFormData({ ...initialResidentState, entryDate: today, nextPaymentDate: nextMonth });
     setShowResidentForm(true);
@@ -304,84 +343,64 @@ const App = () => {
     }
   };
 
-  // [REVISI V.5.9] LOGIC SIMPAN PENGHUNI + AUTO RECORD PAYMENT
   const handleSaveResident = async () => {
     if (!residentFormData.name || !residentFormData.entryDate) {
       alert("Nama dan Tanggal Masuk wajib diisi!");
       return;
     }
-
     try {
       const dataUpdate = {
         resident: residentFormData.name,
         entryDate: residentFormData.entryDate,
         nextPaymentDate: residentFormData.nextPaymentDate,
         ktpPhoto: residentFormData.ktpPhoto || "",
-        status: 'Unpaid', // Status akan otomatis terupdate oleh UI logic based on date
+        status: 'Unpaid',
         debt: 0
       };
 
-      // 1. Simpan Data Penghuni ke Kamar
       await updateDoc(doc(db, "rooms", selectedRoomForResident.number), dataUpdate);
 
-      // 2. [LOGIC BARU] Cek apakah perlu catat uang masuk otomatis?
       const entry = new Date(residentFormData.entryDate);
       const nextDue = new Date(residentFormData.nextPaymentDate);
       const roomPrice = selectedRoomForResident.price || 0;
       let newPaymentLog = null;
 
-      // Jika Tanggal Jatuh Tempo > Tanggal Masuk (berarti sudah bayar di depan)
       if (nextDue > entry && roomPrice > 0) {
-          // Hitung berapa bulan yang dibayar (Logika: selisih bulan)
-          // Secara default saat registrasi, jika tanggal maju = Bayar Awal
           const monthsPaid = (nextDue.getFullYear() - entry.getFullYear()) * 12 + (nextDue.getMonth() - entry.getMonth());
-          
           if (monthsPaid > 0) {
              const totalPaid = monthsPaid * roomPrice;
-             
              newPaymentLog = {
                 id: Date.now(),
                 roomId: selectedRoomForResident.number,
-                residentName: residentFormData.name, // Penting untuk filter history
+                residentName: residentFormData.name,
                 amount: totalPaid,
-                date: residentFormData.entryDate, // Tanggal bayar = Tanggal masuk
+                date: residentFormData.entryDate,
                 type: 'Pembayaran Awal (Registrasi)',
-                method: 'Tunai' // Asumsi Tunai saat daftar
+                method: 'Tunai'
              };
-
-             // Simpan ke collection payments
              await addDoc(collection(db, "payments"), newPaymentLog);
           }
       }
 
-      // 3. Update State Lokal (Rooms & Payments)
       const updatedRooms = rooms.map(room => {
-        if (room.id === selectedRoomForResident.id) {
-          return { ...room, ...dataUpdate };
-        }
+        if (room.id === selectedRoomForResident.id) return { ...room, ...dataUpdate };
         return room;
       });
       setRooms(updatedRooms);
-
-      if (newPaymentLog) {
-          setPayments([newPaymentLog, ...payments]);
-      }
+      if (newPaymentLog) setPayments([newPaymentLog, ...payments]);
 
       setShowResidentForm(false);
-      
       if (newPaymentLog) {
           alert(`Penghuni berhasil disimpan & Pembayaran awal ${formatIDR(newPaymentLog.amount)} tercatat otomatis!`);
       } else {
           alert("Penghuni berhasil disimpan (Belum ada pembayaran dicatat).");
       }
-
     } catch (error) {
       console.error(error);
       alert("Gagal simpan: " + error.message);
     }
   };
 
-  // --- [BARU] LOGIC EDIT PENGHUNI (NAMA/TANGGAL) ---
   const openEditResidentForm = (room) => {
     setEditResidentData({
         roomId: room.id,
@@ -400,7 +419,6 @@ const App = () => {
             entryDate: editResidentData.entryDate,
             nextPaymentDate: editResidentData.nextPaymentDate
         });
-
         setRooms(rooms.map(room => {
             if (room.id === editResidentData.roomId) {
                 return { 
@@ -412,7 +430,6 @@ const App = () => {
             }
             return room;
         }));
-        
         setShowEditResidentForm(false);
         alert("Data penghuni berhasil diperbarui!");
     } catch (error) {
@@ -421,11 +438,9 @@ const App = () => {
     }
   };
 
-  // --- LOGIC PAYMENT (ADMIN) - SMART CALCULATION ---
   const openPaymentModal = (room) => {
     const today = new Date().toISOString().split('T')[0];
     const baseDueDate = room.nextPaymentDate || room.entryDate || today;
-
     setPaymentFormData({
       roomId: room.id,
       roomNumber: room.number,
@@ -440,16 +455,12 @@ const App = () => {
     setShowPaymentModal(true);
   };
 
-  // --- [BARU] FUNGSI KALKULASI PREVIEW DI DALAM RENDER ---
   const calculatePaymentPreview = () => {
     const price = paymentFormData.roomPrice || 1;
     const amount = parseInt(paymentFormData.amount) || 0;
-    
-    // 1. Hitung jumlah bulan yang dibayar
     const monthsPaid = Math.floor(amount / price);
     const remainder = amount % price; 
 
-    // 2. Hitung tanggal jatuh tempo baru (Anchor Logic)
     const currentDue = new Date(paymentFormData.currentDueDateRaw);
     const newDueObj = new Date(currentDue);
     newDueObj.setMonth(newDueObj.getMonth() + monthsPaid);
@@ -469,15 +480,12 @@ const App = () => {
         alert("Nominal pembayaran belum mencukupi untuk 1 bulan sewa.");
         return;
     }
-
     try {
       const today = new Date();
       today.setHours(0,0,0,0);
-
       const newDue = new Date(preview.newDate);
       newDue.setHours(0,0,0,0);
-
-      const newStatus = newDue >= today ? 'Paid' : 'Unpaid';
+      const newStatus = newDue >= today ? 'Paid' : 'Unpaid'; // Status teknis DB
 
       await updateDoc(doc(db, "rooms", paymentFormData.roomNumber), {
         status: newStatus, 
@@ -494,32 +502,23 @@ const App = () => {
         type: `Sewa (${preview.months} Bulan)`, 
         method: paymentFormData.method
       };
-
       await addDoc(collection(db, "payments"), newPayment);
 
       setRooms(rooms.map(room => {
         if (room.id === paymentFormData.roomId) {
-          return { 
-            ...room, 
-            status: newStatus, 
-            debt: 0, 
-            nextPaymentDate: preview.newDate 
-          };
+          return { ...room, status: newStatus, debt: 0, nextPaymentDate: preview.newDate };
         }
         return room;
       }));
-
       setPayments([newPayment, ...payments]);
       setShowPaymentModal(false);
       alert("Pembayaran berhasil! Jatuh tempo diperpanjang.");
-
     } catch (error) {
       console.error(error);
       alert("Gagal bayar: " + error.message);
     }
   };
 
-  // --- LOGIC CHECKOUT (ADMIN) ---
   const openCheckoutModal = (room) => {
     setCheckoutData(room);
     setShowCheckoutModal(true);
@@ -527,17 +526,10 @@ const App = () => {
 
   const handleConfirmCheckout = async () => {
     if (!checkoutData) return;
-
     try {
       await updateDoc(doc(db, "rooms", checkoutData.number), {
-        resident: '',
-        entryDate: '',
-        nextPaymentDate: '',
-        ktpPhoto: null,
-        status: 'Available',
-        debt: 0
+        resident: '', entryDate: '', nextPaymentDate: '', ktpPhoto: null, status: 'Available', debt: 0
       });
-
       const checkoutLog = {
         id: Date.now(),
         roomId: checkoutData.number,
@@ -547,53 +539,37 @@ const App = () => {
         type: 'Checkout / Keluar',
         method: '-'
       };
-
       await addDoc(collection(db, "payments"), checkoutLog);
-
       setRooms(rooms.map(room => {
         if(room.id === checkoutData.id) {
-          return {
-            ...room,
-            resident: '',
-            entryDate: '',
-            nextPaymentDate: '',
-            ktpPhoto: null,
-            status: 'Available',
-            debt: 0
-          }
+          return { ...room, resident: '', entryDate: '', nextPaymentDate: '', ktpPhoto: null, status: 'Available', debt: 0 }
         }
         return room;
       }));
-
       setPayments([checkoutLog, ...payments]);
       setShowCheckoutModal(false);
       setCheckoutData(null);
       setShowResidentDetail(false); 
       alert("Checkout berhasil diproses!");
-
     } catch (error) {
       console.error(error);
       alert("Gagal checkout: " + error.message);
     }
   };
 
-  // --- LOGIC DOWNLOAD PDF (BARU) ---
   const handleDownloadPDF = () => {
     const element = reportContentRef.current;
     if (!element) return;
-
     const opt = {
-      margin:       10, // Margin aman 10mm
+      margin:       10, 
       filename:     `Laporan-Keuangan-${MONTH_NAMES[selectedMonthIndex]}-${selectedYear}.pdf`,
       image:        { type: 'jpeg', quality: 0.98 },
       html2canvas:  { scale: 2, useCORS: true }, 
       jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
     };
-
     html2pdf().set(opt).from(element).save();
   };
 
-  // --- LOGIC GLOBAL (NAVIGATION) ---
   const handleCheckResidentFromDashboard = () => {
     if (selectedRoom) {
       setSelectedRoomForResident(selectedRoom);
@@ -602,7 +578,6 @@ const App = () => {
     }
   };
 
-  // --- SIMPAN SETTINGS KE FIREBASE ---
   const handleSaveSettings = async () => {
     try {
       await setDoc(doc(db, "settings", "access_codes"), config);
@@ -613,7 +588,6 @@ const App = () => {
     }
   };
 
-  // --- LOGIC REPORT ---
   const getMonthlyIncome = (monthIndex, year) => {
     return payments.filter(p => {
       const d = new Date(p.date);
@@ -634,11 +608,8 @@ const App = () => {
     const newStatus = !depositStatus[key];
     const updatedStatus = { ...depositStatus, [key]: newStatus };
     setDepositStatus(updatedStatus);
-
     try {
-        await setDoc(doc(db, "settings", "deposits"), {
-            [key]: newStatus
-        }, { merge: true });
+        await setDoc(doc(db, "settings", "deposits"), { [key]: newStatus }, { merge: true });
     } catch (error) {
         console.error("Gagal simpan status:", error);
         alert("Gagal menyimpan status setor ke database!");
@@ -648,8 +619,8 @@ const App = () => {
   // --- LOGIC OWNER MONITOR ---
   const occupiedRooms = rooms.filter(r => r.resident).length;
   const overdueRooms = rooms.filter(r => {
-    const debt = getDebtCalculation(r);
-    return r.resident && debt.totalDebt > 0;
+      const statusV6 = getStatusV6(r.nextPaymentDate, r.resident);
+      return statusV6.code === 'OVERDUE';
   });
   const currentMonthIncome = getMonthlyIncome(new Date().getMonth(), new Date().getFullYear());
 
@@ -683,7 +654,7 @@ const App = () => {
             </button>
           </div>
           <div className="mt-6 text-center text-xs text-slate-400">
-            <p>Aplikasi Kode V.5.9 (Auto Payment on Register):</p>
+            <p>Aplikasi Kode V.6.0 (Smart Status Color & Multi-Month Debt):</p>
             <p>Support By Malang Florist Group</p>
           </div>
         </div>
@@ -691,7 +662,6 @@ const App = () => {
     );
   }
 
-  // Helper Component: Sidebar/Mobile Nav Item
   const NavItem = ({ id, icon: Icon, label }) => (
     <button 
       onClick={() => {
@@ -712,7 +682,6 @@ const App = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row print:block">
-      {/* CSS untuk Cetak A4 */}
       <style>{`
         @media print {
           @page { size: A4; margin: 10mm; }
@@ -727,10 +696,8 @@ const App = () => {
           .print\\:w-full { width: 100% !important; margin: 0 !important; padding: 0 !important; }
           .print\\:shadow-none { box-shadow: none !important; border: none !important; }
           .print\\:text-black { color: black !important; }
-           
           .bg-slate-100 { background-color: #f1f5f9 !important; }
           .bg-slate-800 { background-color: #1e293b !important; color: white !important; }
-           
           table { width: 100%; border-collapse: collapse; }
           th, td { padding: 4px 8px !important; font-size: 11px !important; } 
           th { background-color: #e2e8f0 !important; }
@@ -739,7 +706,7 @@ const App = () => {
         }
       `}</style>
 
-      {/* --- SIDEBAR DESKTOP --- */}
+      {/* --- SIDEBAR --- */}
       <aside className="hidden md:flex flex-col w-64 bg-white border-r border-slate-200 p-6 sticky top-0 h-screen print:hidden">
         <div className="flex items-center gap-3 mb-10 px-2">
           <div className="bg-blue-600 p-2 rounded-lg text-white">
@@ -747,7 +714,6 @@ const App = () => {
           </div>
           <span className="font-bold text-xl text-slate-800 tracking-tight">Pro-Kos</span>
         </div>
-
         <nav className="space-y-2 flex-1">
           {userRole === 'admin' ? (
             <>
@@ -763,7 +729,6 @@ const App = () => {
             </>
           )}
         </nav>
-
         <button onClick={handleLogout} className="flex items-center gap-4 px-6 py-3 text-red-500 hover:bg-red-50 rounded-xl transition-all">
           <LogOut size={22} />
           <span className="font-medium">Keluar</span>
@@ -772,7 +737,6 @@ const App = () => {
 
       {/* --- KONTEN UTAMA --- */}
       <main className="flex-1 pb-24 md:pb-0 overflow-y-auto print:w-full print:h-auto print:overflow-visible">
-        {/* HEADER MOBILE & DESKTOP */}
         <header className="bg-white border-b border-slate-200 p-4 md:p-6 sticky top-0 z-10 flex justify-between items-center print:hidden">
           <div>
             <h2 className="text-xl font-bold text-slate-800 capitalize">
@@ -791,7 +755,7 @@ const App = () => {
            
           {/* ================= MODAL GLOBAL ================= */}
            
-          {/* 1. Modal Edit Fisik Kamar (Admin Only) */}
+          {/* 1. Edit Kamar */}
           {showRoomForm && (
             <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm print:hidden">
               <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200">
@@ -814,7 +778,7 @@ const App = () => {
             </div>
           )}
 
-          {/* 2. Modal Registrasi Penghuni */}
+          {/* 2. Registrasi Penghuni */}
           {showResidentForm && (
             <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm print:hidden">
               <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200">
@@ -844,7 +808,7 @@ const App = () => {
             </div>
           )}
 
-          {/* 3. [BARU] Modal Edit Penghuni EXISTING */}
+          {/* 3. Edit Penghuni EXISTING */}
           {showEditResidentForm && (
             <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm print:hidden">
               <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200">
@@ -868,7 +832,7 @@ const App = () => {
             </div>
           )}
 
-          {/* 4. Modal Detail Penghuni (KTP & Status) */}
+          {/* 4. Detail Penghuni (KTP) */}
           {showResidentDetail && selectedRoomForResident && (
             <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm print:hidden" style={{ zIndex: 100 }}>
               <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
@@ -897,7 +861,7 @@ const App = () => {
             </div>
           )}
 
-          {/* 5. [BARU] Modal Pembayaran PINTAR */}
+          {/* 5. MODAL PEMBAYARAN PINTAR (UPDATE V.6.0: INFO HUTANG LENGKAP) */}
           {showPaymentModal && (
             <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm print:hidden">
               <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200">
@@ -907,30 +871,67 @@ const App = () => {
                 </div>
                 
                 <div className="p-6 space-y-6">
-                    {/* BAGIAN 1: INFORMASI SAAT INI (INFO TAGIHAN) */}
+                    {/* INFO TAGIHAN V.6.0 */}
                     <div className="bg-slate-50 rounded-xl border border-slate-200 p-4">
                         <div className="flex justify-between items-center mb-2">
                              <h5 className="text-xs font-black text-slate-400 uppercase tracking-wide">Info Tagihan - {paymentFormData.roomNumber}</h5>
                              <span className="text-xs font-bold bg-white border border-slate-200 px-2 py-0.5 rounded text-slate-600">{paymentFormData.resident}</span>
                         </div>
                         <div className="flex justify-between items-end">
-                            <div>
-                                <p className="text-xs text-slate-500 mb-1">Jatuh Tempo Saat Ini:</p>
-                                <p className={`text-lg font-bold ${getDaysOverdue(paymentFormData.currentDueDateRaw) > 0 ? 'text-red-600' : 'text-slate-800'}`}>
-                                    {formatDateIndo(paymentFormData.currentDueDateRaw)}
-                                </p>
-                                {getDaysOverdue(paymentFormData.currentDueDateRaw) > 0 && <span className="text-[10px] bg-red-100 text-red-600 px-1.5 rounded font-bold">TERLEWAT!</span>}
-                            </div>
+                            {(() => {
+                                const statusV6 = getStatusV6(paymentFormData.currentDueDateRaw, paymentFormData.resident);
+                                const overdueText = formatOverdueDuration(paymentFormData.currentDueDateRaw);
+                                return (
+                                    <div>
+                                        <p className="text-xs text-slate-500 mb-1">Status Jatuh Tempo:</p>
+                                        <p className={`text-lg font-bold ${statusV6.color === 'red' ? 'text-red-600' : statusV6.color === 'yellow' ? 'text-yellow-600' : 'text-green-600'}`}>
+                                            {formatDateIndo(paymentFormData.currentDueDateRaw)}
+                                        </p>
+                                        
+                                        {statusV6.code === 'OVERDUE' && (
+                                            <div className="mt-1">
+                                                <span className="text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-bold flex items-center gap-1 w-fit">
+                                                   <AlertTriangle size={10} /> TELAT: {overdueText}
+                                                </span>
+                                            </div>
+                                        )}
+                                        {statusV6.code === 'WARNING' && (
+                                            <span className="text-[10px] bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded font-bold">
+                                               Mendekati Jatuh Tempo
+                                            </span>
+                                        )}
+                                    </div>
+                                );
+                            })()}
+                            
                             <div className="text-right">
                                 <p className="text-xs text-slate-500 mb-1">Harga Sewa:</p>
                                 <p className="text-lg font-bold text-slate-800">{formatIDR(paymentFormData.roomPrice)} /bln</p>
                             </div>
                         </div>
+                        
+                        {/* Total Hutang Kumulatif jika telat > 1 bulan */}
+                        {(() => {
+                           // Cari room asli untuk hitung total hutang
+                           const currentRoom = rooms.find(r => r.id === paymentFormData.roomId);
+                           if(currentRoom) {
+                               const debtInfo = getDebtCalculation(currentRoom);
+                               if(debtInfo.totalDebt > 0) {
+                                   return (
+                                       <div className="mt-3 pt-3 border-t border-dashed border-slate-300 flex justify-between items-center">
+                                           <span className="text-xs font-bold text-red-500 uppercase">Total Hutang Kumulatif</span>
+                                           <span className="text-xl font-black text-red-600">{formatIDR(debtInfo.totalDebt)}</span>
+                                       </div>
+                                   )
+                               }
+                           }
+                           return null;
+                        })()}
                     </div>
 
                     <hr className="border-dashed border-slate-200" />
 
-                    {/* BAGIAN 2: INPUT PEMBAYARAN */}
+                    {/* INPUT PEMBAYARAN */}
                     <div>
                         <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Masukkan Nominal Diterima</label>
                         <div className="relative">
@@ -956,7 +957,7 @@ const App = () => {
                         </div>
                     </div>
 
-                    {/* BAGIAN 3: KALKULASI OTOMATIS (LIVE PREVIEW) */}
+                    {/* KALKULASI PREVIEW */}
                     {(() => {
                         const preview = calculatePaymentPreview();
                         return (
@@ -988,7 +989,6 @@ const App = () => {
                         );
                     })()}
                 </div>
-
                 <div className="p-4 bg-slate-50 flex justify-end gap-2 border-t border-slate-100">
                     <button onClick={() => setShowPaymentModal(false)} className="px-4 py-2 rounded-lg text-slate-600 font-bold hover:bg-slate-200">Batal</button>
                     <button onClick={handleConfirmPayment} className="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 shadow-md flex items-center gap-2">
@@ -999,7 +999,7 @@ const App = () => {
             </div>
           )}
 
-          {/* 6. Modal Checkout */}
+          {/* 6. Checkout */}
           {showCheckoutModal && checkoutData && (
             <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm print:hidden">
               <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in duration-200">
@@ -1016,7 +1016,7 @@ const App = () => {
             </div>
           )}
 
-          {/* 7. Modal Detail Dashboard (View Info & History per Kamar) */}
+          {/* 7. Detail Dashboard V.6.0 */}
           {selectedRoom && (
             <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 print:hidden backdrop-blur-sm">
               <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200">
@@ -1030,23 +1030,42 @@ const App = () => {
                 </div>
                   
                 <div className="p-6 space-y-6">
-                    <div className={`p-4 rounded-xl border ${selectedRoom.status === 'Paid' ? 'bg-green-50 border-green-200' : (getDaysOverdue(selectedRoom.nextPaymentDate) > 0 && selectedRoom.resident) ? 'bg-red-50 border-red-200' : 'bg-slate-50 border-slate-200'}`}>
-                        <h4 className="font-bold text-slate-800 mb-2 flex items-center gap-2"><CreditCard size={18}/> Status Pembayaran</h4>
-                        <div className="grid grid-cols-2 gap-4 text-sm">
-                          <div><p className="text-slate-500 text-xs">Penghuni</p><p className="font-bold">{selectedRoom.resident || '-'}</p></div>
-                          <div><p className="text-slate-500 text-xs">Jatuh Tempo</p><p className={`font-bold ${getDaysOverdue(selectedRoom.nextPaymentDate) > 0 ? 'text-red-600' : 'text-slate-800'}`}>{formatDateIndo(selectedRoom.nextPaymentDate)}</p></div>
-                        </div>
-                        <div className="mt-3 pt-3 border-t border-dashed border-slate-300">
-                           {selectedRoom.resident ? (
-                             selectedRoom.status === 'Paid' ? <p className="text-green-600 font-bold flex items-center gap-1"><CheckCircle2 size={16}/> Sudah Terbayar</p> : <p className="text-red-600 font-bold flex items-center gap-1"><AlertCircle size={16}/> {getDaysOverdue(selectedRoom.nextPaymentDate) > 0 ? `Belum Terbayar (Telat ${getDaysOverdue(selectedRoom.nextPaymentDate)} hari)` : 'Belum Terbayar'}</p>
-                           ) : <p className="text-slate-400 italic">Kamar Kosong</p>}
-                        </div>
-                    </div>
+                    {/* INFO STATUS V.6.0 */}
+                    {(() => {
+                        const statusV6 = getStatusV6(selectedRoom.nextPaymentDate, selectedRoom.resident);
+                        let bgClass = 'bg-slate-50 border-slate-200';
+                        if (statusV6.code === 'SAFE') bgClass = 'bg-green-50 border-green-200';
+                        if (statusV6.code === 'WARNING') bgClass = 'bg-yellow-50 border-yellow-200';
+                        if (statusV6.code === 'OVERDUE') bgClass = 'bg-red-50 border-red-200';
+
+                        return (
+                            <div className={`p-4 rounded-xl border ${bgClass}`}>
+                                <h4 className="font-bold text-slate-800 mb-2 flex items-center gap-2"><CreditCard size={18}/> Status Pembayaran</h4>
+                                <div className="grid grid-cols-2 gap-4 text-sm">
+                                  <div><p className="text-slate-500 text-xs">Penghuni</p><p className="font-bold">{selectedRoom.resident || '-'}</p></div>
+                                  <div><p className="text-slate-500 text-xs">Jatuh Tempo</p><p className="font-bold">{formatDateIndo(selectedRoom.nextPaymentDate)}</p></div>
+                                </div>
+                                <div className="mt-3 pt-3 border-t border-dashed border-slate-300">
+                                   {selectedRoom.resident ? (
+                                      <>
+                                         {statusV6.code === 'SAFE' && <p className="text-green-600 font-bold flex items-center gap-1"><CheckCircle2 size={16}/> Aman (Belum Jatuh Tempo)</p>}
+                                         {statusV6.code === 'WARNING' && <p className="text-yellow-600 font-bold flex items-center gap-1"><AlertCircle size={16}/> Mendekati Jatuh Tempo (Segera Tagih)</p>}
+                                         {statusV6.code === 'OVERDUE' && (
+                                             <div>
+                                                 <p className="text-red-600 font-bold flex items-center gap-1 mb-1"><AlertTriangle size={16}/> TELAT / NUNGGAK</p>
+                                                 <p className="text-xs text-red-500 font-medium ml-5">{formatOverdueDuration(selectedRoom.nextPaymentDate)}</p>
+                                             </div>
+                                         )}
+                                      </>
+                                   ) : <p className="text-slate-400 italic">Kamar Kosong</p>}
+                                </div>
+                            </div>
+                        )
+                    })()}
 
                     <div>
                         <h4 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><History size={18}/> Riwayat Pembayaran</h4>
                         <div className="bg-slate-50 rounded-xl border border-slate-200 max-h-40 overflow-y-auto">
-                          {/* [UPDATE V.5.7] Logic Filter Pembayaran: HANYA TAMPILKAN JIKA NAMANYA SAMA DENGAN PENGHUNI SAAT INI */}
                           {payments.filter(p => p.roomId === selectedRoom.number && p.residentName === selectedRoom.resident).length > 0 ? (
                             payments.filter(p => p.roomId === selectedRoom.number && p.residentName === selectedRoom.resident).map(p => (
                               <div key={p.id} className="p-3 border-b border-slate-100 last:border-0 flex justify-between items-center text-sm">
@@ -1072,11 +1091,8 @@ const App = () => {
           {/* ================= VIEW OWNER ================= */}
           {userRole === 'owner' && (
             <div className="space-y-6">
-               
-              {/* MENU 1: PANTAU KOS (Owner Dashboard) */}
               {activeTab === 'monitor' && (
                 <>
-                  {/* --- UPDATE: Header + Tombol Refresh --- */}
                   <div className="flex justify-between items-center mb-6">
                     <h3 className="font-bold text-lg text-slate-800">Ringkasan Okupansi</h3>
                     <button
@@ -1088,9 +1104,7 @@ const App = () => {
                     </button>
                   </div>
 
-                  {/* Rekap Header Owner */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                      {/* Kamar Terisi */}
                       <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
                         <div>
                            <p className="text-sm font-bold text-slate-500 mb-1">Kamar Terisi</p>
@@ -1098,8 +1112,6 @@ const App = () => {
                         </div>
                         <div className="bg-blue-50 p-3 rounded-xl text-blue-600"><Bed size={28} /></div>
                       </div>
-
-                      {/* Total Pendapatan */}
                       <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
                         <div>
                            <p className="text-sm font-bold text-slate-500 mb-1">Pendapatan Bulan Ini</p>
@@ -1107,8 +1119,6 @@ const App = () => {
                         </div>
                         <div className="bg-green-50 p-3 rounded-xl text-green-600"><TrendingUp size={28} /></div>
                       </div>
-
-                      {/* Kamar Nunggak */}
                       <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm md:col-span-1">
                         <div className="flex justify-between items-start mb-2">
                            <p className="text-sm font-bold text-slate-500">Nunggak / Belum Bayar</p>
@@ -1119,7 +1129,7 @@ const App = () => {
                               {overdueRooms.map(r => (
                                  <div key={r.id} className="flex justify-between items-center text-xs p-2 bg-red-50 rounded-lg border border-red-100">
                                     <span className="font-bold text-slate-700">{r.number}</span>
-                                    <span className="text-red-600 font-bold">{formatDateIndo(r.nextPaymentDate)}</span>
+                                    <span className="text-red-600 font-bold">{formatOverdueDuration(r.nextPaymentDate)}</span>
                                  </div>
                               ))}
                            </div>
@@ -1129,35 +1139,37 @@ const App = () => {
                       </div>
                   </div>
 
-                  {/* Grid Dashboard */}
                   <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm mt-6">
                       <h3 className="font-bold text-lg text-slate-800 mb-6">Status Kamar Real-time</h3>
                       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                         {rooms.map(room => {
-                           const isOccupied = !!room.resident;
+                           // IMPLEMENTASI VISUALISASI V.6.0
+                           const statusV6 = getStatusV6(room.nextPaymentDate, room.resident);
                            const debtInfo = getDebtCalculation(room);
-                           const isOverdue = isOccupied && debtInfo.totalDebt > 0 && room.status !== 'Paid';
-                           const isPaid = room.status === 'Paid';
 
                            let cardClass = 'bg-white border-slate-200 hover:border-blue-300';
                            let statusBadge = null;
-                           if (isOccupied) {
-                             if (isOverdue) {
-                                 cardClass = 'bg-red-50 border-red-300 hover:border-red-500';
-                                 statusBadge = (
+
+                           if (statusV6.code === 'OVERDUE') {
+                                cardClass = 'bg-red-50 border-red-300 hover:border-red-500';
+                                statusBadge = (
                                    <div className="text-right">
-                                       <span className="block text-[10px] font-bold text-white bg-red-500 px-2 py-0.5 rounded-full mb-1">TELAT {debtInfo.months} BLN</span>
+                                       <span className="block text-[10px] font-bold text-white bg-red-500 px-2 py-0.5 rounded-full mb-1">
+                                          {formatOverdueDuration(room.nextPaymentDate)}
+                                       </span>
                                        <span className="text-xs font-black text-red-600">-{formatIDR(debtInfo.totalDebt)}</span>
                                    </div>
-                                 );
-                             } else if (isPaid) {
-                                 cardClass = 'bg-green-50 border-green-300 hover:border-green-500';
-                                 statusBadge = <span className="text-[10px] font-bold text-white bg-green-500 px-2 py-0.5 rounded-full">LUNAS</span>;
-                             } else {
-                                 cardClass = 'bg-yellow-50 border-yellow-300 hover:border-yellow-500';
-                                 // [REVISI] Mengubah teks TAGIH menjadi BELUM BAYAR agar konsisten dengan Admin
-                                 statusBadge = <span className="text-[10px] font-bold text-yellow-700 bg-yellow-200 px-2 py-0.5 rounded-full">BELUM BAYAR</span>;
-                             }
+                                );
+                           } else if (statusV6.code === 'WARNING') {
+                                cardClass = 'bg-yellow-50 border-yellow-300 hover:border-yellow-500';
+                                statusBadge = (
+                                    <span className="text-[10px] font-bold text-yellow-700 bg-yellow-200 px-2 py-0.5 rounded-full animate-pulse">
+                                        TAGIH! {statusV6.label}
+                                    </span>
+                                );
+                           } else if (statusV6.code === 'SAFE') {
+                                cardClass = 'bg-green-50 border-green-300 hover:border-green-500';
+                                statusBadge = <span className="text-[10px] font-bold text-white bg-green-500 px-2 py-0.5 rounded-full">AMAN</span>;
                            }
 
                            return (
@@ -1168,8 +1180,8 @@ const App = () => {
                               >
                                 <div className="flex justify-between items-start mb-2">
                                    <span className="font-black text-xl text-slate-800">{room.number.replace('ROOM ', '')}</span>
-                                   {isOverdue && <AlertCircle size={18} className="text-red-500" />}
-                                   {isPaid && <CheckCircle2 size={18} className="text-green-500" />}
+                                   {statusV6.code === 'OVERDUE' && <AlertCircle size={18} className="text-red-500" />}
+                                   {statusV6.code === 'SAFE' && <CheckCircle2 size={18} className="text-green-500" />}
                                 </div>
                                 <div className="space-y-1 relative z-10">
                                    <p className="text-xs font-bold text-slate-700 truncate">
@@ -1188,7 +1200,6 @@ const App = () => {
                 </>
               )}
 
-              {/* MENU 2: LAPORAN (Owner View) */}
               {activeTab === 'reports' && (
                 <div className="space-y-6">
                    {reportViewMode === 'grid' ? (
@@ -1217,7 +1228,6 @@ const App = () => {
                                            e.stopPropagation();
                                            setSelectedMonthIndex(index);
                                            setReportViewMode('detail');
-                                           // setTimeout(() => window.print(), 100); // INI DIGANTI
                                         }}
                                         className="p-1.5 bg-white rounded-lg text-slate-700 hover:text-blue-600 shadow-sm border border-slate-100"
                                         title="Buka Laporan"
@@ -1242,7 +1252,6 @@ const App = () => {
                         </div>
                      </>
                    ) : (
-                     /* Detail Laporan A4 (Shared UI) */
                      <>
                         <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-6 print:hidden">
                           <button onClick={() => setReportViewMode('grid')} className="flex items-center gap-2 text-slate-600 font-bold hover:text-blue-600 transition-colors"><ArrowLeft size={20} /> Kembali</button>
@@ -1252,8 +1261,6 @@ const App = () => {
                           </div>
                         </div>
                         
-                        {/* [REVISI] Kertas A4 Responsif: w-full di HP, tapi 210mm (A4) di layar besar/print */}
-                        {/* NOTE: CLASS BORDER/SHADOW/ROUNDED DIHAPUS DISINI AGAR PDF BERSIH */}
                         <div ref={reportContentRef} className="bg-white p-8 md:p-12 w-full md:w-[210mm] mx-auto min-h-0 md:min-h-[297mm] relative print:p-0 print:w-full">
                              <div className="text-center border-b-4 border-slate-800 pb-4 mb-6 relative">
                              <h1 className="text-2xl font-black text-slate-800 tracking-wide uppercase">Laporan Keuangan Kos</h1>
@@ -1261,7 +1268,6 @@ const App = () => {
                              <h2 className="text-lg font-bold text-blue-600 mt-1 uppercase border-2 border-blue-100 inline-block px-4 py-1 rounded bg-blue-50">{MONTH_NAMES[selectedMonthIndex]} {selectedYear}</h2>
                              {depositStatus[`${selectedYear}-${selectedMonthIndex}`] && (<div className="absolute top-0 right-0 border-4 border-green-600 text-green-600 font-black text-xl px-4 py-2 rounded rotate-[-15deg] opacity-80 print:opacity-100">SUDAH DISETOR</div>)}
                           </div>
-                          {/* Isi Laporan sama dengan Admin */}
                           <div className="grid grid-cols-2 gap-4 mb-6 print:grid-cols-2">
                              <div className="bg-slate-50 p-3 border border-slate-200 rounded-xl print:border-black"><p className="text-[10px] font-bold text-slate-500 uppercase mb-1">Total Pemasukan</p><p className="text-xl font-black text-slate-800">{formatIDR(getMonthlyIncome(selectedMonthIndex, selectedYear))}</p></div>
                              <div className="bg-slate-50 p-3 border border-slate-200 rounded-xl print:border-black"><p className="text-[10px] font-bold text-slate-500 uppercase mb-1">Total Transaksi</p><p className="text-xl font-black text-slate-800">{getFilteredPayments().length} <span className="text-xs font-normal text-slate-500">transaksi</span></p></div>
@@ -1297,43 +1303,46 @@ const App = () => {
               {/* MENU 1: DASHBOARD */}
               {activeTab === 'dashboard' && (
                 <div className="space-y-6">
-                  {/* Legend Warna Grid */}
+                  {/* Legend Warna Grid V.6.0 */}
                   <div className="flex flex-col md:flex-row justify-between items-start md:items-center print:hidden gap-4">
                     <h3 className="font-bold text-lg text-slate-800">Status Grid Kamar</h3>
                     <div className="flex flex-wrap gap-3">
                        <span className="flex items-center gap-1 text-xs text-slate-600 bg-white px-2 py-1 rounded border"><div className="w-3 h-3 bg-white border border-slate-300 rounded-full"></div> Kosong</span>
-                       <span className="flex items-center gap-1 text-xs text-slate-600 bg-white px-2 py-1 rounded border"><div className="w-3 h-3 bg-yellow-400 rounded-full"></div> Terisi</span>
-                       <span className="flex items-center gap-1 text-xs text-slate-600 bg-white px-2 py-1 rounded border"><div className="w-3 h-3 bg-green-500 rounded-full"></div> Lunas</span>
-                       <span className="flex items-center gap-1 text-xs text-slate-600 bg-white px-2 py-1 rounded border"><div className="w-3 h-3 bg-red-500 rounded-full"></div> Telat Bayar</span>
+                       <span className="flex items-center gap-1 text-xs text-slate-600 bg-white px-2 py-1 rounded border"><div className="w-3 h-3 bg-green-500 rounded-full"></div> Aman</span>
+                       <span className="flex items-center gap-1 text-xs text-slate-600 bg-white px-2 py-1 rounded border"><div className="w-3 h-3 bg-yellow-400 rounded-full"></div> H-5 Tagih</span>
+                       <span className="flex items-center gap-1 text-xs text-slate-600 bg-white px-2 py-1 rounded border"><div className="w-3 h-3 bg-red-500 rounded-full"></div> Telat</span>
                     </div>
                   </div>
 
                   {/* GRID KAMAR */}
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                     {rooms.map(room => {
-                      const isOccupied = !!room.resident;
+                      const statusV6 = getStatusV6(room.nextPaymentDate, room.resident);
                       const debtInfo = getDebtCalculation(room);
-                      const isOverdue = isOccupied && debtInfo.totalDebt > 0 && room.status !== 'Paid';
-                      const isPaid = room.status === 'Paid';
 
                       let cardClass = 'bg-white border-slate-200 hover:border-blue-300';
                       let statusBadge = null;
-                      if (isOccupied) {
-                        if (isOverdue) {
+
+                      if (statusV6.code === 'OVERDUE') {
                           cardClass = 'bg-red-50 border-red-300 hover:border-red-500';
                           statusBadge = (
-                             <div className="text-right">
-                               <span className="block text-[10px] font-bold text-white bg-red-500 px-2 py-0.5 rounded-full mb-1">TELAT {debtInfo.months} BLN</span>
-                               <span className="text-xs font-black text-red-600">-{formatIDR(debtInfo.totalDebt)}</span>
-                             </div>
+                              <div className="text-right">
+                                  <span className="block text-[10px] font-bold text-white bg-red-500 px-2 py-0.5 rounded-full mb-1">
+                                      {formatOverdueDuration(room.nextPaymentDate)}
+                                  </span>
+                                  <span className="text-xs font-black text-red-600">-{formatIDR(debtInfo.totalDebt)}</span>
+                              </div>
                           );
-                        } else if (isPaid) {
-                          cardClass = 'bg-green-50 border-green-300 hover:border-green-500';
-                          statusBadge = <span className="text-[10px] font-bold text-white bg-green-500 px-2 py-0.5 rounded-full">LUNAS</span>;
-                        } else {
+                      } else if (statusV6.code === 'WARNING') {
                           cardClass = 'bg-yellow-50 border-yellow-300 hover:border-yellow-500';
-                          statusBadge = <span className="text-[10px] font-bold text-yellow-700 bg-yellow-200 px-2 py-0.5 rounded-full">BELUM BAYAR</span>;
-                        }
+                          statusBadge = (
+                              <span className="text-[10px] font-bold text-yellow-700 bg-yellow-200 px-2 py-0.5 rounded-full animate-pulse">
+                                  TAGIH! {statusV6.label}
+                              </span>
+                          );
+                      } else if (statusV6.code === 'SAFE') {
+                          cardClass = 'bg-green-50 border-green-300 hover:border-green-500';
+                          statusBadge = <span className="text-[10px] font-bold text-white bg-green-500 px-2 py-0.5 rounded-full">AMAN</span>;
                       }
 
                       return (
@@ -1344,8 +1353,8 @@ const App = () => {
                         >
                           <div className="flex justify-between items-start mb-2">
                             <span className="font-black text-xl text-slate-800">{room.number.replace('ROOM ', '')}</span>
-                            {isOverdue && <AlertCircle size={18} className="text-red-500 animate-pulse" />}
-                            {isPaid && <CheckCircle2 size={18} className="text-green-500" />}
+                            {statusV6.code === 'OVERDUE' && <AlertCircle size={18} className="text-red-500 animate-pulse" />}
+                            {statusV6.code === 'SAFE' && <CheckCircle2 size={18} className="text-green-500" />}
                           </div>
                           <div className="space-y-1 relative z-10">
                             <p className="text-xs font-bold text-slate-700 truncate">
@@ -1385,10 +1394,7 @@ const App = () => {
                                ) : (
                                   <>
                                     <button onClick={() => openResidentDetail(room)} className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-all" title="Info Penghuni"><Info size={18} /></button>
-                                    
-                                    {/* Tombol Edit Data Penghuni (Nama/Tanggal) */}
                                     <button onClick={() => openEditResidentForm(room)} className="p-2 bg-yellow-50 text-yellow-600 rounded-lg hover:bg-yellow-100 transition-all" title="Edit Data Penghuni"><UserCog size={18} /></button>
-                                    
                                     <button onClick={() => openPaymentModal(room)} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-md shadow-blue-100 hover:shadow-none hover:bg-blue-700 transition-all flex items-center gap-2"><CreditCard size={16}/> Bayar</button>
                                     <button onClick={() => openCheckoutModal(room)} className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-all" title="Penghuni Keluar"><DoorOpen size={18} /></button>
                                   </>
@@ -1436,7 +1442,6 @@ const App = () => {
                                   </div>
                                   <h4 className="text-lg font-bold text-slate-800 mb-1">{month}</h4>
                                   <p className="text-xl font-black text-slate-700 mb-4">{formatIDR(income)}</p>
-                                  
                                   <div className={`text-[10px] font-bold px-2 py-1 rounded border inline-flex items-center gap-1 ${statusColor}`}>
                                      {isDeposited ? <CheckCircle2 size={10} /> : <Clock size={10} />} {statusText}
                                   </div>
@@ -1447,7 +1452,7 @@ const App = () => {
                      </>
                    ) : (
                      <>
-                        {/* Header Detail Admin (Ada Tombol Toggle Setor) */}
+                        {/* Header Detail Admin */}
                        <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-6 print:hidden">
                           <button onClick={() => setReportViewMode('grid')} className="flex items-center gap-2 text-slate-600 font-bold hover:text-blue-600 transition-colors"><ArrowLeft size={20} /> Kembali ke Grid</button>
                           <div className="flex gap-2 w-full md:w-auto">
@@ -1463,22 +1468,17 @@ const App = () => {
                           </div>
                        </div>
                       
-                       {/* [REVISI] Kertas A4 Responsif: w-full di HP, tapi 210mm (A4) di layar besar/print */}
-                       {/* NOTE: CLASS BORDER/SHADOW/ROUNDED DIHAPUS DISINI AGAR PDF BERSIH */}
                        <div ref={reportContentRef} className="bg-white p-8 md:p-12 w-full md:w-[210mm] mx-auto min-h-0 md:min-h-[297mm] relative print:p-0 print:w-full">
-                          {/* (Kop Laporan) */}
                           <div className="text-center border-b-4 border-slate-800 pb-4 mb-6 relative">
                              <h1 className="text-2xl font-black text-slate-800 tracking-wide uppercase">Laporan Keuangan Kos</h1>
                              <p className="text-slate-500 text-sm font-medium mt-1">Periode Laporan</p>
                              <h2 className="text-lg font-bold text-blue-600 mt-1 uppercase border-2 border-blue-100 inline-block px-4 py-1 rounded bg-blue-50">{MONTH_NAMES[selectedMonthIndex]} {selectedYear}</h2>
                              {depositStatus[`${selectedYear}-${selectedMonthIndex}`] && (<div className="absolute top-0 right-0 border-4 border-green-600 text-green-600 font-black text-xl px-4 py-2 rounded rotate-[-15deg] opacity-80 print:opacity-100">SUDAH DISETOR</div>)}
                           </div>
-                          {/* (Summary) */}
                           <div className="grid grid-cols-2 gap-4 mb-6 print:grid-cols-2">
                              <div className="bg-slate-50 p-3 border border-slate-200 rounded-xl print:border-black"><p className="text-[10px] font-bold text-slate-500 uppercase mb-1">Total Pemasukan</p><p className="text-xl font-black text-slate-800">{formatIDR(getMonthlyIncome(selectedMonthIndex, selectedYear))}</p></div>
                              <div className="bg-slate-50 p-3 border border-slate-200 rounded-xl print:border-black"><p className="text-[10px] font-bold text-slate-500 uppercase mb-1">Total Transaksi</p><p className="text-xl font-black text-slate-800">{getFilteredPayments().length} <span className="text-xs font-normal text-slate-500">transaksi</span></p></div>
                           </div>
-                          {/* (Tabel) */}
                           <div className="mb-8">
                              <h3 className="font-bold text-slate-800 mb-2 text-sm border-l-4 border-blue-500 pl-3">Rincian Transaksi</h3>
                             <div className="overflow-hidden border border-slate-300 rounded-lg">
@@ -1493,7 +1493,6 @@ const App = () => {
                               </table>
                             </div>
                           </div>
-                          {/* (Footer) */}
                           <div className="flex justify-between mt-12 px-8 break-inside-avoid"><div className="text-center"><p className="text-xs font-medium text-slate-600 mb-12">Diserahkan Oleh,</p><p className="font-bold text-sm text-slate-800 border-b border-slate-400 pb-1 px-4">Pengelola Kos</p></div><div className="text-center"><p className="text-xs font-medium text-slate-600 mb-12">Diterima Oleh,</p><p className="font-bold text-sm text-slate-800 border-b border-slate-400 pb-1 px-4">Pemilik Kos</p></div></div>
                           <div className="mt-8 text-center text-[8px] text-slate-400 border-t border-slate-100 pt-2 print:fixed print:bottom-4 print:left-0 print:right-0">Dicetak otomatis oleh Sistem Manajemen Pro-Kos pada {new Date().toLocaleString('id-ID')}</div>
                        </div>
