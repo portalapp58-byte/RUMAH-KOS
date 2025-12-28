@@ -1,11 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react'; // Tambah useRef
 import { 
   LayoutDashboard, Bed, History, Settings, LogOut, Plus, 
   Printer, Home, CreditCard, AlertCircle, UserPlus, Pencil, 
   X, Users, ChevronRight, Info, Upload, FileText, DoorOpen, 
   CalendarCheck, Wallet, CheckCircle2, Calendar, ArrowLeft, 
-  Stamp, Clock, Save, Lock, TrendingUp, Calculator, UserCog
+  Stamp, Clock, Save, Lock, TrendingUp, Calculator, UserCog, Download // Tambah icon Download
 } from 'lucide-react';
+
+// Import html2pdf (Pastikan sudah npm install html2pdf.js)
+import html2pdf from 'html2pdf.js';
 
 import { initializeApp } from "firebase/app";
 import { 
@@ -137,6 +140,7 @@ const App = () => {
   const [reportViewMode, setReportViewMode] = useState('grid'); // 'grid' atau 'detail'
   const [selectedMonthIndex, setSelectedMonthIndex] = useState(null); // 0-11
   const [depositStatus, setDepositStatus] = useState({}); // { "2024-0": true } -> Format YYYY-MonthIndex
+  const reportContentRef = useRef(null); // Ref untuk target HTML to PDF
 
   // --- CONFIG ---
   const [config, setConfig] = useState({
@@ -532,6 +536,25 @@ const App = () => {
     }
   };
 
+  // --- LOGIC DOWNLOAD PDF (BARU) ---
+  const handleDownloadPDF = () => {
+    const element = reportContentRef.current;
+    if (!element) return;
+
+    const opt = {
+      margin:       5, // Margin 5mm
+      filename:     `Laporan-Keuangan-${MONTH_NAMES[selectedMonthIndex]}-${selectedYear}.pdf`,
+      image:        { type: 'jpeg', quality: 0.98 },
+      html2canvas:  { scale: 2, useCORS: true }, // Scale 2 agar tajam
+      jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    };
+
+    // Tampilkan notifikasi loading (opsional)
+    // alert("Sedang mengunduh PDF..."); // Boleh dihapus jika mengganggu
+
+    html2pdf().set(opt).from(element).save();
+  };
+
   // --- LOGIC GLOBAL (NAVIGATION) ---
   const handleCheckResidentFromDashboard = () => {
     if (selectedRoom) {
@@ -623,7 +646,7 @@ const App = () => {
             </button>
           </div>
           <div className="mt-6 text-center text-xs text-slate-400">
-            <p>Aplikasi Kode V.5.3 (Final A4 Mobile & Text Fix):</p>
+            <p>Aplikasi Kode V.5.4 (Auto PDF Download):</p>
             <p>Support By Malang Florist Group</p>
           </div>
         </div>
@@ -1146,10 +1169,10 @@ const App = () => {
                                            e.stopPropagation();
                                            setSelectedMonthIndex(index);
                                            setReportViewMode('detail');
-                                           setTimeout(() => window.print(), 100);
+                                           // setTimeout(() => window.print(), 100); // INI DIGANTI
                                         }}
                                         className="p-1.5 bg-white rounded-lg text-slate-700 hover:text-blue-600 shadow-sm border border-slate-100"
-                                        title="Print Laporan"
+                                        title="Buka Laporan"
                                      >
                                        <Printer size={16} />
                                      </button>
@@ -1175,11 +1198,14 @@ const App = () => {
                      <>
                         <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-6 print:hidden">
                           <button onClick={() => setReportViewMode('grid')} className="flex items-center gap-2 text-slate-600 font-bold hover:text-blue-600 transition-colors"><ArrowLeft size={20} /> Kembali</button>
-                          <button onClick={() => window.print()} className="bg-slate-800 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-slate-900 transition-all shadow-lg"><Printer size={18} /> Cetak PDF</button>
+                          <div className="flex gap-2">
+                             <button onClick={() => window.print()} className="bg-white border border-slate-300 text-slate-700 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-slate-50 transition-all shadow-sm"><Printer size={18} /> Print Biasa</button>
+                             <button onClick={handleDownloadPDF} className="bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-blue-700 transition-all shadow-lg"><Download size={18} /> Download PDF</button>
+                          </div>
                         </div>
                         
-                        {/* [REVISI] Kertas A4 Responsif: w-full di HP, tapi 210mm (A4) di layar besar/print */}
-                        <div className="bg-white p-8 md:p-12 rounded-none md:rounded-2xl border border-slate-200 shadow-xl print:shadow-none print:border-none w-full md:w-[210mm] mx-auto min-h-0 md:min-h-[297mm] relative print:p-0 print:w-full">
+                        {/* Kertas A4 Responsif dengan Ref untuk html2pdf */}
+                        <div ref={reportContentRef} className="bg-white p-8 md:p-12 rounded-none md:rounded-2xl border border-slate-200 shadow-xl print:shadow-none print:border-none w-full md:w-[210mm] mx-auto min-h-0 md:min-h-[297mm] relative print:p-0 print:w-full">
                           <div className="text-center border-b-4 border-slate-800 pb-4 mb-6 relative">
                              <h1 className="text-2xl font-black text-slate-800 tracking-wide uppercase">Laporan Keuangan Kos</h1>
                              <p className="text-slate-500 text-sm font-medium mt-1">Periode Laporan</p>
@@ -1385,12 +1411,13 @@ const App = () => {
                                 <Stamp size={18} /> 
                                 {depositStatus[`${selectedYear}-${selectedMonthIndex}`] ? 'Batalkan Status Setor' : 'Tandai Sudah Setor'}
                              </button>
-                             <button onClick={() => window.print()} className="bg-slate-800 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-slate-900 transition-all shadow-lg"><Printer size={18} /> Cetak / PDF</button>
+                             <button onClick={() => window.print()} className="bg-white border border-slate-300 text-slate-700 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-slate-50 transition-all shadow-sm"><Printer size={18} /> Print Biasa</button>
+                             <button onClick={handleDownloadPDF} className="bg-slate-800 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-slate-900 transition-all shadow-lg"><Download size={18} /> Download PDF</button>
                           </div>
                        </div>
                        
                        {/* [REVISI] Kertas A4 Responsif: w-full di HP, tapi 210mm (A4) di layar besar/print */}
-                       <div className="bg-white p-8 md:p-12 rounded-none md:rounded-2xl border border-slate-200 shadow-xl print:shadow-none print:border-none w-full md:w-[210mm] mx-auto min-h-0 md:min-h-[297mm] relative print:p-0 print:w-full">
+                       <div ref={reportContentRef} className="bg-white p-8 md:p-12 rounded-none md:rounded-2xl border border-slate-200 shadow-xl print:shadow-none print:border-none w-full md:w-[210mm] mx-auto min-h-0 md:min-h-[297mm] relative print:p-0 print:w-full">
                           {/* (Kop Laporan) */}
                           <div className="text-center border-b-4 border-slate-800 pb-4 mb-6 relative">
                              <h1 className="text-2xl font-black text-slate-800 tracking-wide uppercase">Laporan Keuangan Kos</h1>
