@@ -4,7 +4,7 @@ import {
   Printer, Home, CreditCard, AlertCircle, UserPlus, Pencil, 
   X, Users, ChevronRight, Info, Upload, FileText, DoorOpen, 
   CalendarCheck, Wallet, CheckCircle2, Calendar, ArrowLeft, 
-  Stamp, Clock, Save, Lock, TrendingUp
+  Stamp, Clock, Save, Lock, TrendingUp, Calculator, UserCog
 } from 'lucide-react';
 
 import { initializeApp } from "firebase/app";
@@ -44,6 +44,13 @@ const formatIDR = (amount) => {
   }).format(amount);
 };
 
+// Format Tanggal Indo (Contoh: 10 Februari 2024)
+const formatDateIndo = (dateStr) => {
+  if (!dateStr) return '-';
+  const date = new Date(dateStr);
+  return date.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+};
+
 // Helper: Tambah Bulan untuk Next Payment
 const addMonths = (dateStr, months) => {
   if (!dateStr) return '';
@@ -60,13 +67,13 @@ const getDaysOverdue = (dueDate) => {
   // Reset jam agar hitungan murni hari
   today.setHours(0, 0, 0, 0);
   due.setHours(0, 0, 0, 0);
-  
+   
   const diffTime = today - due;
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
   return diffDays > 0 ? diffDays : 0;
 };
 
-// [BARU] Helper: Hitung Status Hutang (Nominal & Durasi)
+// Helper: Hitung Status Hutang (Nominal & Durasi)
 const getDebtCalculation = (room) => {
   if (!room.resident || !room.nextPaymentDate || room.status === 'Paid') {
     return { months: 0, totalDebt: 0 };
@@ -74,7 +81,7 @@ const getDebtCalculation = (room) => {
 
   const today = new Date();
   const dueDate = new Date(room.nextPaymentDate);
-  
+   
   // Jika belum jatuh tempo, tidak ada hutang
   if (today < dueDate) return { months: 0, totalDebt: 0 };
 
@@ -88,7 +95,7 @@ const getDebtCalculation = (room) => {
 
   // Minimal 1 bulan jika statusnya unpaid (untuk cover bulan berjalan)
   const debtMonths = diffMonths > 0 ? diffMonths : 1;
-  
+   
   // Total Hutang = Bulan Telat * Harga Kamar + (Sisa Hutang Manual di DB jika ada)
   const totalDebt = (debtMonths * room.price) + (room.debt || 0);
 
@@ -107,19 +114,21 @@ const App = () => {
   const [userRole, setUserRole] = useState(null); // 'owner' or 'admin'
   const [activeTab, setActiveTab] = useState('dashboard');
   const [loginCode, setLoginCode] = useState('');
-  
+   
   // --- STATE MODAL & FORM ---
   const [selectedRoom, setSelectedRoom] = useState(null); // Untuk detail dashboard
   const [editingId, setEditingId] = useState(null); 
   const [showRoomForm, setShowRoomForm] = useState(false); // Edit Fisik Kamar
-  
-  const [showResidentForm, setShowResidentForm] = useState(false); // Tambah Penghuni
+   
+  const [showResidentForm, setShowResidentForm] = useState(false); // Tambah Penghuni Baru
+  const [showEditResidentForm, setShowEditResidentForm] = useState(false); // [BARU] Edit Data Penghuni Existing
   const [showResidentDetail, setShowResidentDetail] = useState(false); // Detail Penghuni
   const [selectedRoomForResident, setSelectedRoomForResident] = useState(null); 
 
   const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [paymentFormData, setPaymentFormData] = useState({ roomId: null, amount: 0, date: '', method: 'Transfer', nextDueDate: '' });
-  
+  const [paymentFormData, setPaymentFormData] = useState({ roomId: null, amount: 0, date: '', method: 'Transfer', nextDueDate: '', currentDueDateRaw: '' });
+  // currentDueDateRaw: menyimpan tanggal jatuh tempo asli sebelum diedit/dibayar
+   
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
   const [checkoutData, setCheckoutData] = useState(null);
 
@@ -141,7 +150,7 @@ const App = () => {
       const num = i + 1;
       const roomNumber = `ROOM ${num < 10 ? '0' + num : num}`;
       const isFloor1 = num <= 10;
-      
+       
       return {
         id: num,
         number: roomNumber,
@@ -169,7 +178,7 @@ const App = () => {
       try {
         // 1. Ambil Data Kamar
         const snapshot = await getDocs(collection(db, "rooms"));
-        
+         
         if (snapshot.empty) {
           // Kalau kosong, buat data awal otomatis
           const dataAwal = generateInitialRooms();
@@ -217,6 +226,9 @@ const App = () => {
 
   const initialResidentState = { name: '', entryDate: '', nextPaymentDate: '', ktpPhoto: null };
   const [residentFormData, setResidentFormData] = useState(initialResidentState);
+  
+  // [BARU] Form State untuk Edit Penghuni
+  const [editResidentData, setEditResidentData] = useState({ roomId: null, name: '', entryDate: '', nextPaymentDate: '' });
 
   // --- LOGIC AUTH ---
   const handleLogin = () => {
@@ -250,20 +262,16 @@ const App = () => {
     setShowRoomForm(true);
   };
 
-  // --- [FIXED] SIMPAN EDIT KAMAR KE FIREBASE ---
+  // --- SIMPAN EDIT FISIK KAMAR ---
   const handleSaveRoom = async () => {
     if (editingId) {
       try {
-        // Cari kamar yang sedang diedit
         const roomToUpdate = rooms.find(r => r.id === editingId);
         if (roomToUpdate) {
-            // Update ke Firebase
             await updateDoc(doc(db, "rooms", roomToUpdate.number), {
                 price: roomFormData.price,
                 desc: roomFormData.desc
             });
-
-            // Update ke Layar
             setRooms(rooms.map(room => room.id === editingId ? { ...room, ...roomFormData } : room));
             alert("Perubahan kamar berhasil disimpan!");
         }
@@ -275,7 +283,7 @@ const App = () => {
     setShowRoomForm(false);
   };
 
-  // --- LOGIC RESIDENT (ADMIN) ---
+  // --- LOGIC RESIDENT REGISTRATION (ADMIN) ---
   const openResidentRegistration = (room) => {
     const today = new Date().toISOString().split('T')[0];
     const nextMonth = addMonths(today, 1);
@@ -298,7 +306,6 @@ const App = () => {
     }
   };
 
-  // --- SIMPAN PENGHUNI KE FIREBASE ---
   const handleSaveResident = async () => {
     if (!residentFormData.name || !residentFormData.entryDate) {
       alert("Nama dan Tanggal Masuk wajib diisi!");
@@ -333,49 +340,108 @@ const App = () => {
     }
   };
 
-  // --- LOGIC PAYMENT (ADMIN) - MODIFIED FOR AGING DEBT ---
+  // --- [BARU] LOGIC EDIT PENGHUNI (NAMA/TANGGAL) ---
+  const openEditResidentForm = (room) => {
+    setEditResidentData({
+        roomId: room.id,
+        roomNumber: room.number,
+        name: room.resident,
+        entryDate: room.entryDate,
+        nextPaymentDate: room.nextPaymentDate
+    });
+    setShowEditResidentForm(true);
+  };
+
+  const handleSaveEditedResident = async () => {
+    try {
+        await updateDoc(doc(db, "rooms", editResidentData.roomNumber), {
+            resident: editResidentData.name,
+            entryDate: editResidentData.entryDate,
+            nextPaymentDate: editResidentData.nextPaymentDate
+        });
+
+        setRooms(rooms.map(room => {
+            if (room.id === editResidentData.roomId) {
+                return { 
+                    ...room, 
+                    resident: editResidentData.name,
+                    entryDate: editResidentData.entryDate,
+                    nextPaymentDate: editResidentData.nextPaymentDate
+                };
+            }
+            return room;
+        }));
+        
+        setShowEditResidentForm(false);
+        alert("Data penghuni berhasil diperbarui!");
+    } catch (error) {
+        console.error("Error editing resident:", error);
+        alert("Gagal update data: " + error.message);
+    }
+  };
+
+  // --- LOGIC PAYMENT (ADMIN) - SMART CALCULATION ---
   const openPaymentModal = (room) => {
     const today = new Date().toISOString().split('T')[0];
     
-    // [MODIFIKASI] Hitung Hutang Otomatis
-    const { totalDebt } = getDebtCalculation(room); 
-    
-    // Jika ada hutang, default form amount adalah Total Hutang. Jika tidak, harga kamar normal.
-    const suggestedAmount = totalDebt > 0 ? totalDebt : room.price;
-
-    // Kalkulasi estimasi due date berikutnya
-    const priceSafe = room.price > 0 ? room.price : 1; // Prevent division by zero
-    const monthsToPay = Math.floor(suggestedAmount / priceSafe);
-    
-    const baseDate = room.nextPaymentDate || today;
-    const nextDue = addMonths(baseDate, monthsToPay > 0 ? monthsToPay : 1);
+    // Kita set default amount 0 agar admin mengetik manual
+    // Tanggal Jatuh Tempo diambil dari database (Anchor Date)
+    // Jika tidak ada nextPaymentDate, pakai entryDate, jika tidak ada pakai today
+    const baseDueDate = room.nextPaymentDate || room.entryDate || today;
 
     setPaymentFormData({
       roomId: room.id,
       roomNumber: room.number,
       resident: room.resident,
-      amount: suggestedAmount, 
+      roomPrice: room.price, // Simpan harga kamar untuk kalkulasi
+      amount: 0, // Reset ke 0
       date: today,
       method: 'Transfer',
-      nextDueDate: nextDue
+      nextDueDate: baseDueDate, // Ini akan berubah otomatis saat user input uang
+      currentDueDateRaw: baseDueDate // Ini tanggal asli 'jangkar' yang tidak berubah di form
     });
     setShowPaymentModal(true);
   };
 
-  // --- SIMPAN PEMBAYARAN KE FIREBASE - MODIFIED FOR AGING DEBT ---
+  // --- [BARU] FUNGSI KALKULASI PREVIEW DI DALAM RENDER ---
+  // Fungsi ini dipanggil langsung di bagian Render Modal Pembayaran
+  const calculatePaymentPreview = () => {
+    const price = paymentFormData.roomPrice || 1;
+    const amount = parseInt(paymentFormData.amount) || 0;
+    
+    // 1. Hitung jumlah bulan yang dibayar
+    const monthsPaid = Math.floor(amount / price);
+    const remainder = amount % price; // Sisa uang (bisa jadi kembalian/deposit)
+
+    // 2. Hitung tanggal jatuh tempo baru (Anchor Logic)
+    // Logika: Tanggal Baru = Tanggal Lama + Bulan Dibayar
+    const currentDue = new Date(paymentFormData.currentDueDateRaw);
+    const newDueObj = new Date(currentDue);
+    newDueObj.setMonth(newDueObj.getMonth() + monthsPaid);
+    const newDueDateStr = newDueObj.toISOString().split('T')[0];
+
+    return {
+        months: monthsPaid,
+        remainder: remainder,
+        newDate: newDueDateStr,
+        isValid: monthsPaid > 0
+    };
+  };
+
   const handleConfirmPayment = async () => {
+    const preview = calculatePaymentPreview();
+
+    if (!preview.isValid) {
+        alert("Nominal pembayaran belum mencukupi untuk 1 bulan sewa.");
+        return;
+    }
+
     try {
-      // [MODIFIKASI] Logika potong hutang / majukan bulan
-      const roomPrice = rooms.find(r => r.id === paymentFormData.roomId)?.price || 0;
-      const priceSafe = roomPrice > 0 ? roomPrice : 1; // Safety check
-      
-      const monthsPaid = Math.floor(paymentFormData.amount / priceSafe);
-      
-      // Update data di Firebase
+      // Update data di Firebase dengan Tanggal Baru hasil kalkulasi
       await updateDoc(doc(db, "rooms", paymentFormData.roomNumber), {
-        status: 'Paid', // Sementara set Paid, nanti UI handle realtime overdue
-        debt: 0, // Reset hutang manual karena sudah pakai logic tanggal
-        nextPaymentDate: paymentFormData.nextDueDate 
+        status: 'Paid', 
+        debt: 0, 
+        nextPaymentDate: preview.newDate 
       });
 
       const newPayment = {
@@ -383,7 +449,7 @@ const App = () => {
         roomId: paymentFormData.roomNumber,
         amount: paymentFormData.amount,
         date: paymentFormData.date,
-        type: `Sewa (${monthsPaid} Bulan)`, // Update keterangan biar jelas
+        type: `Sewa (${preview.months} Bulan)`, 
         method: paymentFormData.method
       };
       await addDoc(collection(db, "payments"), newPayment);
@@ -394,7 +460,7 @@ const App = () => {
             ...room, 
             status: 'Paid', 
             debt: 0, 
-            nextPaymentDate: paymentFormData.nextDueDate 
+            nextPaymentDate: preview.newDate 
           };
         }
         return room;
@@ -402,7 +468,7 @@ const App = () => {
 
       setPayments([newPayment, ...payments]);
       setShowPaymentModal(false);
-      alert("Pembayaran berhasil disimpan!");
+      alert("Pembayaran berhasil! Jatuh tempo diperpanjang.");
 
     } catch (error) {
       console.error(error);
@@ -416,7 +482,6 @@ const App = () => {
     setShowCheckoutModal(true);
   };
 
-  // --- SIMPAN CHECKOUT KE FIREBASE ---
   const handleConfirmCheckout = async () => {
     if (!checkoutData) return;
 
@@ -503,16 +568,13 @@ const App = () => {
     });
   };
 
-  // --- SIMPAN STATUS SETOR KE FIREBASE ---
   const toggleDepositStatus = async () => {
     const key = `${selectedYear}-${selectedMonthIndex}`;
     const newStatus = !depositStatus[key];
 
-    // 1. Update State Lokal
     const updatedStatus = { ...depositStatus, [key]: newStatus };
     setDepositStatus(updatedStatus);
 
-    // 2. Simpan ke Firebase
     try {
         await setDoc(doc(db, "settings", "deposits"), {
             [key]: newStatus
@@ -525,7 +587,6 @@ const App = () => {
 
   // --- LOGIC OWNER MONITOR ---
   const occupiedRooms = rooms.filter(r => r.resident).length;
-  // Update logic overdue room untuk Owner juga
   const overdueRooms = rooms.filter(r => {
     const debt = getDebtCalculation(r);
     return r.resident && (r.status === 'Unpaid' || debt.totalDebt > 0);
@@ -562,7 +623,7 @@ const App = () => {
             </button>
           </div>
           <div className="mt-6 text-center text-xs text-slate-400">
-            <p>Aplikasi Kode V.5.2.1:</p>
+            <p>Aplikasi Kode V.5.2.2 (Smart Logic Update):</p>
             <p>Support By Malang Florist Group</p>
           </div>
         </div>
@@ -606,10 +667,10 @@ const App = () => {
           .print\\:w-full { width: 100% !important; margin: 0 !important; padding: 0 !important; }
           .print\\:shadow-none { box-shadow: none !important; border: none !important; }
           .print\\:text-black { color: black !important; }
-          
+           
           .bg-slate-100 { background-color: #f1f5f9 !important; }
           .bg-slate-800 { background-color: #1e293b !important; color: white !important; }
-          
+           
           table { width: 100%; border-collapse: collapse; }
           th, td { padding: 4px 8px !important; font-size: 11px !important; } 
           th { background-color: #e2e8f0 !important; }
@@ -667,9 +728,9 @@ const App = () => {
         </header>
 
         <div className="p-4 md:p-8 max-w-7xl mx-auto print:w-full print:p-0 print:max-w-none">
-          
+           
           {/* ================= MODAL GLOBAL ================= */}
-          
+           
           {/* 1. Modal Edit Fisik Kamar (Admin Only) */}
           {showRoomForm && (
             <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm print:hidden">
@@ -723,7 +784,31 @@ const App = () => {
             </div>
           )}
 
-          {/* 3. Modal Detail Penghuni (KTP & Status) */}
+          {/* 3. [BARU] Modal Edit Penghuni EXISTING */}
+          {showEditResidentForm && (
+            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm print:hidden">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200">
+                <div className="bg-indigo-600 p-6 flex justify-between items-center text-white">
+                    <div><h4 className="font-bold text-lg flex items-center gap-2"><UserCog size={20}/> Edit Data Penghuni</h4><p className="text-xs opacity-90 mt-1">{editResidentData.roomNumber}</p></div>
+                    <button onClick={() => setShowEditResidentForm(false)} className="hover:bg-indigo-700 p-1 rounded-full"><X size={20}/></button>
+                </div>
+                <div className="p-6 space-y-4">
+                    <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nama Penghuni</label><input className="w-full px-3 py-2 border rounded-lg font-bold text-slate-700" value={editResidentData.name} onChange={e => setEditResidentData({...editResidentData, name: e.target.value})} /></div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Tanggal Masuk</label><input type="date" className="w-full px-3 py-2 border rounded-lg" value={editResidentData.entryDate} onChange={e => setEditResidentData({...editResidentData, entryDate: e.target.value})} /></div>
+                      <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Jadwal Tagihan (Jatuh Tempo)</label><input type="date" className="w-full px-3 py-2 border rounded-lg bg-yellow-50 border-yellow-200" value={editResidentData.nextPaymentDate} onChange={e => setEditResidentData({...editResidentData, nextPaymentDate: e.target.value})} /></div>
+                    </div>
+                    <div className="bg-blue-50 p-3 rounded-lg text-xs text-blue-700 flex gap-2 items-start"><Info size={16} className="shrink-0 mt-0.5" /> <span>Mengubah tanggal jatuh tempo di sini akan mempengaruhi status pembayaran secara manual. Gunakan dengan hati-hati.</span></div>
+                </div>
+                <div className="p-4 bg-slate-50 flex justify-end gap-2 border-t border-slate-100">
+                    <button onClick={() => setShowEditResidentForm(false)} className="px-4 py-2 rounded-lg text-slate-600 font-bold hover:bg-slate-200">Batal</button>
+                    <button onClick={handleSaveEditedResident} className="px-6 py-2 bg-indigo-600 text-white rounded-lg font-bold hover:bg-indigo-700">Simpan Perubahan</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* 4. Modal Detail Penghuni (KTP & Status) */}
           {showResidentDetail && selectedRoomForResident && (
             <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm print:hidden" style={{ zIndex: 100 }}>
               <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
@@ -752,38 +837,109 @@ const App = () => {
             </div>
           )}
 
-          {/* 4. Modal Pembayaran */}
+          {/* 5. [BARU] Modal Pembayaran PINTAR */}
           {showPaymentModal && (
             <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm print:hidden">
-              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200">
                 <div className="bg-blue-600 p-6 flex justify-between items-center text-white">
                     <h4 className="font-bold text-lg flex items-center gap-2"><Wallet size={20}/> Pembayaran Sewa</h4>
                     <button onClick={() => setShowPaymentModal(false)} className="hover:bg-blue-700 p-1 rounded-full"><X size={20}/></button>
                 </div>
-                <div className="p-6 space-y-4">
-                    <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 mb-4">
-                      <p className="text-xs font-bold text-blue-500 uppercase mb-1">{paymentFormData.roomNumber}</p>
-                      <h3 className="text-xl font-bold text-blue-700">{paymentFormData.resident}</h3>
+                
+                <div className="p-6 space-y-6">
+                    {/* BAGIAN 1: INFORMASI SAAT INI (INFO TAGIHAN) */}
+                    <div className="bg-slate-50 rounded-xl border border-slate-200 p-4">
+                        <div className="flex justify-between items-center mb-2">
+                             <h5 className="text-xs font-black text-slate-400 uppercase tracking-wide">Info Tagihan - {paymentFormData.roomNumber}</h5>
+                             <span className="text-xs font-bold bg-white border border-slate-200 px-2 py-0.5 rounded text-slate-600">{paymentFormData.resident}</span>
+                        </div>
+                        <div className="flex justify-between items-end">
+                            <div>
+                                <p className="text-xs text-slate-500 mb-1">Jatuh Tempo Saat Ini:</p>
+                                <p className={`text-lg font-bold ${getDaysOverdue(paymentFormData.currentDueDateRaw) > 0 ? 'text-red-600' : 'text-slate-800'}`}>
+                                    {formatDateIndo(paymentFormData.currentDueDateRaw)}
+                                </p>
+                                {getDaysOverdue(paymentFormData.currentDueDateRaw) > 0 && <span className="text-[10px] bg-red-100 text-red-600 px-1.5 rounded font-bold">TERLEWAT!</span>}
+                            </div>
+                            <div className="text-right">
+                                <p className="text-xs text-slate-500 mb-1">Harga Sewa:</p>
+                                <p className="text-lg font-bold text-slate-800">{formatIDR(paymentFormData.roomPrice)} /bln</p>
+                            </div>
+                        </div>
                     </div>
-                    <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Jumlah Bayar</label><input type="number" className="w-full px-3 py-2 border rounded-lg font-bold text-lg" value={paymentFormData.amount} onChange={e => setPaymentFormData({...paymentFormData, amount: parseInt(e.target.value) || 0})} /></div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Metode</label><select className="w-full px-3 py-2 border rounded-lg bg-white" value={paymentFormData.method} onChange={e => setPaymentFormData({...paymentFormData, method: e.target.value})}><option value="Transfer">Transfer</option><option value="Tunai">Tunai</option><option value="QRIS">QRIS</option></select></div>
-                      <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Tanggal Bayar</label><input type="date" className="w-full px-3 py-2 border rounded-lg" value={paymentFormData.date} onChange={e => setPaymentFormData({...paymentFormData, date: e.target.value})} /></div>
+
+                    <hr className="border-dashed border-slate-200" />
+
+                    {/* BAGIAN 2: INPUT PEMBAYARAN */}
+                    <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Masukkan Nominal Diterima</label>
+                        <div className="relative">
+                            <span className="absolute left-4 top-3.5 text-slate-400 font-bold">Rp</span>
+                            <input 
+                                type="number" 
+                                className="w-full pl-12 pr-4 py-3 border-2 border-blue-100 rounded-xl font-bold text-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-100 outline-none transition-all"
+                                placeholder="0"
+                                value={paymentFormData.amount} 
+                                onChange={e => setPaymentFormData({...paymentFormData, amount: parseInt(e.target.value) || 0})}
+                                autoFocus
+                            />
+                        </div>
+                         <div className="flex gap-2 mt-3">
+                            <div className="w-1/2">
+                                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Metode</label>
+                                <select className="w-full px-3 py-2 border rounded-lg bg-white text-sm" value={paymentFormData.method} onChange={e => setPaymentFormData({...paymentFormData, method: e.target.value})}><option value="Transfer">Transfer</option><option value="Tunai">Tunai</option><option value="QRIS">QRIS</option></select>
+                            </div>
+                            <div className="w-1/2">
+                                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Tanggal Transaksi</label>
+                                <input type="date" className="w-full px-3 py-2 border rounded-lg text-sm" value={paymentFormData.date} onChange={e => setPaymentFormData({...paymentFormData, date: e.target.value})} />
+                            </div>
+                        </div>
                     </div>
-                    <div className="pt-2 border-t border-slate-100 mt-2">
-                      <label className="block text-xs font-bold text-green-600 uppercase mb-1">Perpanjang Sampai</label>
-                      <input type="date" className="w-full px-3 py-2 border border-green-200 bg-green-50 rounded-lg text-green-700 font-bold" value={paymentFormData.nextDueDate} onChange={e => setPaymentFormData({...paymentFormData, nextDueDate: e.target.value})} />
-                    </div>
+
+                    {/* BAGIAN 3: KALKULASI OTOMATIS (LIVE PREVIEW) */}
+                    {(() => {
+                        const preview = calculatePaymentPreview();
+                        return (
+                            <div className={`rounded-xl p-4 border transition-all ${preview.isValid ? 'bg-green-50 border-green-200' : 'bg-slate-50 border-slate-200'}`}>
+                                <h5 className="text-xs font-black uppercase tracking-wide mb-3 flex items-center gap-2">
+                                    <Calculator size={14}/> Hasil Kalkulasi Otomatis
+                                </h5>
+                                {preview.isValid ? (
+                                    <div className="space-y-2">
+                                        <div className="flex justify-between text-sm">
+                                            <span className="text-slate-600">Durasi Perpanjangan:</span>
+                                            <span className="font-bold text-green-700">{preview.months} Bulan</span>
+                                        </div>
+                                        <div className="flex justify-between text-sm">
+                                            <span className="text-slate-600">Jatuh Tempo BARU:</span>
+                                            <span className="font-bold text-blue-700 bg-blue-100 px-2 rounded">{formatDateIndo(preview.newDate)}</span>
+                                        </div>
+                                        {preview.remainder > 0 && (
+                                            <div className="flex justify-between text-xs mt-2 pt-2 border-t border-green-200">
+                                                <span className="text-slate-500 italic">Lebih bayar / Kembalian:</span>
+                                                <span className="font-bold text-slate-700">{formatIDR(preview.remainder)}</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <p className="text-xs text-slate-400 italic text-center py-2">Masukkan nominal minimal {formatIDR(paymentFormData.roomPrice)} untuk melihat hasil.</p>
+                                )}
+                            </div>
+                        );
+                    })()}
                 </div>
+
                 <div className="p-4 bg-slate-50 flex justify-end gap-2 border-t border-slate-100">
                     <button onClick={() => setShowPaymentModal(false)} className="px-4 py-2 rounded-lg text-slate-600 font-bold hover:bg-slate-200">Batal</button>
-                    <button onClick={handleConfirmPayment} className="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 shadow-md">Konfirmasi Bayar</button>
+                    <button onClick={handleConfirmPayment} className="px-6 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 shadow-md flex items-center gap-2">
+                        <CheckCircle2 size={18} /> Konfirmasi Bayar
+                    </button>
                 </div>
               </div>
             </div>
           )}
 
-          {/* 5. Modal Checkout */}
+          {/* 6. Modal Checkout */}
           {showCheckoutModal && checkoutData && (
             <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm print:hidden">
               <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in duration-200">
@@ -800,7 +956,7 @@ const App = () => {
             </div>
           )}
 
-          {/* 6. Modal Detail Dashboard (View Info & History per Kamar) */}
+          {/* 7. Modal Detail Dashboard (View Info & History per Kamar) */}
           {selectedRoom && (
             <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 print:hidden backdrop-blur-sm">
               <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200">
@@ -812,13 +968,13 @@ const App = () => {
                   </div>
                   <button onClick={() => setSelectedRoom(null)} className="p-1 hover:bg-slate-700 rounded-full transition-colors"><X size={24} /></button>
                 </div>
-                
+                 
                 <div className="p-6 space-y-6">
                     <div className={`p-4 rounded-xl border ${selectedRoom.status === 'Paid' ? 'bg-green-50 border-green-200' : (getDaysOverdue(selectedRoom.nextPaymentDate) > 0 && selectedRoom.resident) ? 'bg-red-50 border-red-200' : 'bg-slate-50 border-slate-200'}`}>
                         <h4 className="font-bold text-slate-800 mb-2 flex items-center gap-2"><CreditCard size={18}/> Status Pembayaran</h4>
                         <div className="grid grid-cols-2 gap-4 text-sm">
                           <div><p className="text-slate-500 text-xs">Penghuni</p><p className="font-bold">{selectedRoom.resident || '-'}</p></div>
-                          <div><p className="text-slate-500 text-xs">Jatuh Tempo</p><p className={`font-bold ${getDaysOverdue(selectedRoom.nextPaymentDate) > 0 ? 'text-red-600' : 'text-slate-800'}`}>{selectedRoom.nextPaymentDate || '-'}</p></div>
+                          <div><p className="text-slate-500 text-xs">Jatuh Tempo</p><p className={`font-bold ${getDaysOverdue(selectedRoom.nextPaymentDate) > 0 ? 'text-red-600' : 'text-slate-800'}`}>{formatDateIndo(selectedRoom.nextPaymentDate)}</p></div>
                         </div>
                         <div className="mt-3 pt-3 border-t border-dashed border-slate-300">
                            {selectedRoom.resident ? (
@@ -833,7 +989,7 @@ const App = () => {
                           {payments.filter(p => p.roomId === selectedRoom.number).length > 0 ? (
                             payments.filter(p => p.roomId === selectedRoom.number).map(p => (
                               <div key={p.id} className="p-3 border-b border-slate-100 last:border-0 flex justify-between items-center text-sm">
-                                 <div><p className="font-bold text-slate-700">{p.date}</p><p className="text-xs text-slate-500">{p.type} via {p.method}</p></div>
+                                 <div><p className="font-bold text-slate-700">{formatDateIndo(p.date)}</p><p className="text-xs text-slate-500">{p.type} via {p.method}</p></div>
                                  <span className="font-bold text-green-600 bg-green-50 px-2 py-1 rounded text-xs">{formatIDR(p.amount)}</span>
                               </div>
                             ))
@@ -851,11 +1007,11 @@ const App = () => {
             </div>
           )}
 
-          
+           
           {/* ================= VIEW OWNER ================= */}
           {userRole === 'owner' && (
             <div className="space-y-6">
-              
+               
               {/* MENU 1: PANTAU KOS (Owner Dashboard) */}
               {activeTab === 'monitor' && (
                 <>
@@ -890,7 +1046,7 @@ const App = () => {
                               {overdueRooms.map(r => (
                                  <div key={r.id} className="flex justify-between items-center text-xs p-2 bg-red-50 rounded-lg border border-red-100">
                                     <span className="font-bold text-slate-700">{r.number}</span>
-                                    <span className="text-red-600 font-bold">{r.nextPaymentDate}</span>
+                                    <span className="text-red-600 font-bold">{formatDateIndo(r.nextPaymentDate)}</span>
                                  </div>
                               ))}
                            </div>
@@ -906,8 +1062,6 @@ const App = () => {
                       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                         {rooms.map(room => {
                            const isOccupied = !!room.resident;
-                           
-                           // [MODIFIKASI] Tampilkan Hutang di Card
                            const debtInfo = getDebtCalculation(room);
                            const isOverdue = isOccupied && debtInfo.totalDebt > 0 && room.status !== 'Paid';
                            const isPaid = room.status === 'Paid';
@@ -919,10 +1073,10 @@ const App = () => {
                              if (isOverdue) {
                                  cardClass = 'bg-red-50 border-red-300 hover:border-red-500';
                                  statusBadge = (
-                                    <div className="text-right">
+                                   <div className="text-right">
                                        <span className="block text-[10px] font-bold text-white bg-red-500 px-2 py-0.5 rounded-full mb-1">TELAT {debtInfo.months} BLN</span>
                                        <span className="text-xs font-black text-red-600">-{formatIDR(debtInfo.totalDebt)}</span>
-                                    </div>
+                                   </div>
                                  );
                              } else if (isPaid) {
                                  cardClass = 'bg-green-50 border-green-300 hover:border-green-500';
@@ -961,7 +1115,7 @@ const App = () => {
                 </>
               )}
 
-              {/* MENU 2: LAPORAN (Owner View - Read Only but Printable) */}
+              {/* MENU 2: LAPORAN (Owner View) */}
               {activeTab === 'reports' && (
                 <div className="space-y-6">
                    {reportViewMode === 'grid' ? (
@@ -987,14 +1141,14 @@ const App = () => {
                                   <div className="flex justify-between items-start mb-2">
                                      <h4 className="text-sm font-bold uppercase tracking-wider">{month}</h4>
                                      <button 
-                                       onClick={(e) => {
-                                          e.stopPropagation();
-                                          setSelectedMonthIndex(index);
-                                          setReportViewMode('detail');
-                                          setTimeout(() => window.print(), 100);
-                                       }}
-                                       className="p-1.5 bg-white rounded-lg text-slate-700 hover:text-blue-600 shadow-sm border border-slate-100"
-                                       title="Print Laporan"
+                                        onClick={(e) => {
+                                           e.stopPropagation();
+                                           setSelectedMonthIndex(index);
+                                           setReportViewMode('detail');
+                                           setTimeout(() => window.print(), 100);
+                                        }}
+                                        className="p-1.5 bg-white rounded-lg text-slate-700 hover:text-blue-600 shadow-sm border border-slate-100"
+                                        title="Print Laporan"
                                      >
                                        <Printer size={16} />
                                      </button>
@@ -1043,7 +1197,7 @@ const App = () => {
                                   <tr><th className="px-2 py-2 border-r border-slate-300 w-1/6">Tanggal</th><th className="px-2 py-2 border-r border-slate-300 w-1/6">Kamar</th><th className="px-2 py-2 border-r border-slate-300 w-2/6">Keterangan</th><th className="px-2 py-2 text-right w-2/6">Jumlah</th></tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-200">
-                                  {getFilteredPayments().length > 0 ? (getFilteredPayments().map((pay, index) => (<tr key={pay.id} className={index % 2 === 0 ? 'bg-white' : 'bg-slate-50'}><td className="px-2 py-1 border-r border-slate-200 font-medium">{pay.date}</td><td className="px-2 py-1 border-r border-slate-200 font-bold">{pay.roomId}</td><td className="px-2 py-1 border-r border-slate-200 text-slate-600">{pay.type} ({pay.method})</td><td className="px-2 py-1 text-right font-bold text-slate-800">{formatIDR(pay.amount)}</td></tr>))) : (<tr><td colSpan="4" className="px-4 py-8 text-center text-slate-400 italic">Tidak ada transaksi pada bulan ini.</td></tr>)}
+                                  {getFilteredPayments().length > 0 ? (getFilteredPayments().map((pay, index) => (<tr key={pay.id} className={index % 2 === 0 ? 'bg-white' : 'bg-slate-50'}><td className="px-2 py-1 border-r border-slate-200 font-medium">{formatDateIndo(pay.date)}</td><td className="px-2 py-1 border-r border-slate-200 font-bold">{pay.roomId}</td><td className="px-2 py-1 border-r border-slate-200 text-slate-600">{pay.type} ({pay.method})</td><td className="px-2 py-1 text-right font-bold text-slate-800">{formatIDR(pay.amount)}</td></tr>))) : (<tr><td colSpan="4" className="px-4 py-8 text-center text-slate-400 italic">Tidak ada transaksi pada bulan ini.</td></tr>)}
                                 </tbody>
                                 <tfoot className="bg-slate-100 border-t-2 border-slate-300 font-bold print:bg-slate-200"><tr><td colSpan="3" className="px-2 py-2 text-right uppercase">Total Bulan Ini</td><td className="px-2 py-2 text-right text-blue-800 text-sm">{formatIDR(getMonthlyIncome(selectedMonthIndex, selectedYear))}</td></tr></tfoot>
                               </table>
@@ -1062,7 +1216,7 @@ const App = () => {
           {/* ================= VIEW PENGELOLA (ADMIN) ================= */}
           {userRole === 'admin' && (
             <div className="space-y-8">
-              
+               
               {/* MENU 1: DASHBOARD */}
               {activeTab === 'dashboard' && (
                 <div className="space-y-6">
@@ -1081,8 +1235,6 @@ const App = () => {
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                     {rooms.map(room => {
                       const isOccupied = !!room.resident;
-                      
-                      // [MODIFIKASI] Tampilkan Hutang di Dashboard Admin
                       const debtInfo = getDebtCalculation(room);
                       const isOverdue = isOccupied && debtInfo.totalDebt > 0 && room.status !== 'Paid';
                       const isPaid = room.status === 'Paid';
@@ -1157,6 +1309,10 @@ const App = () => {
                                ) : (
                                   <>
                                     <button onClick={() => openResidentDetail(room)} className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-all" title="Info Penghuni"><Info size={18} /></button>
+                                    
+                                    {/* Tombol Edit Data Penghuni (Nama/Tanggal) */}
+                                    <button onClick={() => openEditResidentForm(room)} className="p-2 bg-yellow-50 text-yellow-600 rounded-lg hover:bg-yellow-100 transition-all" title="Edit Data Penghuni"><UserCog size={18} /></button>
+                                    
                                     <button onClick={() => openPaymentModal(room)} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-md shadow-blue-100 hover:shadow-none hover:bg-blue-700 transition-all flex items-center gap-2"><CreditCard size={16}/> Bayar</button>
                                     <button onClick={() => openCheckoutModal(room)} className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-all" title="Penghuni Keluar"><DoorOpen size={18} /></button>
                                   </>
@@ -1254,7 +1410,7 @@ const App = () => {
                                   <tr><th className="px-2 py-2 border-r border-slate-300 w-1/6">Tanggal</th><th className="px-2 py-2 border-r border-slate-300 w-1/6">Kamar</th><th className="px-2 py-2 border-r border-slate-300 w-2/6">Keterangan</th><th className="px-2 py-2 text-right w-2/6">Jumlah</th></tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-200">
-                                  {getFilteredPayments().length > 0 ? (getFilteredPayments().map((pay, index) => (<tr key={pay.id} className={index % 2 === 0 ? 'bg-white' : 'bg-slate-50'}><td className="px-2 py-1 border-r border-slate-200 font-medium">{pay.date}</td><td className="px-2 py-1 border-r border-slate-200 font-bold">{pay.roomId}</td><td className="px-2 py-1 border-r border-slate-200 text-slate-600">{pay.type} ({pay.method})</td><td className="px-2 py-1 text-right font-bold text-slate-800">{formatIDR(pay.amount)}</td></tr>))) : (<tr><td colSpan="4" className="px-4 py-8 text-center text-slate-400 italic">Tidak ada transaksi pada bulan ini.</td></tr>)}
+                                  {getFilteredPayments().length > 0 ? (getFilteredPayments().map((pay, index) => (<tr key={pay.id} className={index % 2 === 0 ? 'bg-white' : 'bg-slate-50'}><td className="px-2 py-1 border-r border-slate-200 font-medium">{formatDateIndo(pay.date)}</td><td className="px-2 py-1 border-r border-slate-200 font-bold">{pay.roomId}</td><td className="px-2 py-1 border-r border-slate-200 text-slate-600">{pay.type} ({pay.method})</td><td className="px-2 py-1 text-right font-bold text-slate-800">{formatIDR(pay.amount)}</td></tr>))) : (<tr><td colSpan="4" className="px-4 py-8 text-center text-slate-400 italic">Tidak ada transaksi pada bulan ini.</td></tr>)}
                                 </tbody>
                                 <tfoot className="bg-slate-100 border-t-2 border-slate-300 font-bold print:bg-slate-200"><tr><td colSpan="3" className="px-2 py-2 text-right uppercase">Total Bulan Ini</td><td className="px-2 py-2 text-right text-blue-800 text-sm">{formatIDR(getMonthlyIncome(selectedMonthIndex, selectedYear))}</td></tr></tfoot>
                               </table>
