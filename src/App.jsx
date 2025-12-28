@@ -395,19 +395,18 @@ const App = () => {
     setPaymentFormData({
       roomId: room.id,
       roomNumber: room.number,
-      resident: room.resident,
-      roomPrice: room.price, // Simpan harga kamar untuk kalkulasi
-      amount: 0, // Reset ke 0
+      resident: room.resident, // PENTING: Nama penghuni diambil di sini
+      roomPrice: room.price, 
+      amount: 0, 
       date: today,
       method: 'Transfer',
-      nextDueDate: baseDueDate, // Ini akan berubah otomatis saat user input uang
-      currentDueDateRaw: baseDueDate // Ini tanggal asli 'jangkar' yang tidak berubah di form
+      nextDueDate: baseDueDate, 
+      currentDueDateRaw: baseDueDate 
     });
     setShowPaymentModal(true);
   };
 
   // --- [BARU] FUNGSI KALKULASI PREVIEW DI DALAM RENDER ---
-  // Fungsi ini dipanggil langsung di bagian Render Modal Pembayaran
   const calculatePaymentPreview = () => {
     const price = paymentFormData.roomPrice || 1;
     const amount = parseInt(paymentFormData.amount) || 0;
@@ -447,9 +446,11 @@ const App = () => {
         nextPaymentDate: preview.newDate 
       });
 
+      // [UPDATE V.5.7] Menyimpan 'residentName' agar history tidak tertukar
       const newPayment = {
         id: Date.now(),
         roomId: paymentFormData.roomNumber,
+        residentName: paymentFormData.resident, // <-- LOGIKA BARU: Simpan Nama Penghuni
         amount: paymentFormData.amount,
         date: paymentFormData.date,
         type: `Sewa (${preview.months} Bulan)`, 
@@ -501,6 +502,7 @@ const App = () => {
       const checkoutLog = {
         id: Date.now(),
         roomId: checkoutData.number,
+        residentName: checkoutData.resident, // Simpan nama saat checkout juga
         amount: 0,
         date: new Date().toISOString().split('T')[0],
         type: 'Checkout / Keluar',
@@ -541,10 +543,10 @@ const App = () => {
     if (!element) return;
 
     const opt = {
-      margin:       5, // Margin 5mm
+      margin:       10, // Margin aman 10mm
       filename:     `Laporan-Keuangan-${MONTH_NAMES[selectedMonthIndex]}-${selectedYear}.pdf`,
       image:        { type: 'jpeg', quality: 0.98 },
-      html2canvas:  { scale: 2, useCORS: true }, // Scale 2 agar tajam
+      html2canvas:  { scale: 2, useCORS: true }, 
       jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
     };
 
@@ -642,7 +644,7 @@ const App = () => {
             </button>
           </div>
           <div className="mt-6 text-center text-xs text-slate-400">
-            <p>Aplikasi Kode V.5.5 (Clean White PDF):</p>
+            <p>Aplikasi Kode V.5.7 (Logic Fix Tenant History):</p>
             <p>Support By Malang Florist Group</p>
           </div>
         </div>
@@ -1005,14 +1007,15 @@ const App = () => {
                     <div>
                         <h4 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><History size={18}/> Riwayat Pembayaran</h4>
                         <div className="bg-slate-50 rounded-xl border border-slate-200 max-h-40 overflow-y-auto">
-                          {payments.filter(p => p.roomId === selectedRoom.number).length > 0 ? (
-                            payments.filter(p => p.roomId === selectedRoom.number).map(p => (
+                          {/* [UPDATE V.5.7] Logic Filter Pembayaran: HANYA TAMPILKAN JIKA NAMANYA SAMA DENGAN PENGHUNI SAAT INI */}
+                          {payments.filter(p => p.roomId === selectedRoom.number && p.residentName === selectedRoom.resident).length > 0 ? (
+                            payments.filter(p => p.roomId === selectedRoom.number && p.residentName === selectedRoom.resident).map(p => (
                               <div key={p.id} className="p-3 border-b border-slate-100 last:border-0 flex justify-between items-center text-sm">
                                  <div><p className="font-bold text-slate-700">{formatDateIndo(p.date)}</p><p className="text-xs text-slate-500">{p.type} via {p.method}</p></div>
                                  <span className="font-bold text-green-600 bg-green-50 px-2 py-1 rounded text-xs">{formatIDR(p.amount)}</span>
                               </div>
                             ))
-                          ) : <div className="p-4 text-center text-slate-400 text-xs italic">Belum ada riwayat pembayaran untuk kamar ini.</div>}
+                          ) : <div className="p-4 text-center text-slate-400 text-xs italic">Belum ada riwayat pembayaran untuk penghuni ini.</div>}
                         </div>
                     </div>
 
