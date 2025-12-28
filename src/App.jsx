@@ -623,7 +623,7 @@ const App = () => {
             </button>
           </div>
           <div className="mt-6 text-center text-xs text-slate-400">
-            <p>Aplikasi Kode V.5.2.2 (Smart Logic Update):</p>
+            <p>Aplikasi Kode V.5.3 (Final A4 Mobile & Text Fix):</p>
             <p>Support By Malang Florist Group</p>
           </div>
         </div>
@@ -1083,7 +1083,8 @@ const App = () => {
                                  statusBadge = <span className="text-[10px] font-bold text-white bg-green-500 px-2 py-0.5 rounded-full">LUNAS</span>;
                              } else {
                                  cardClass = 'bg-yellow-50 border-yellow-300 hover:border-yellow-500';
-                                 statusBadge = <span className="text-[10px] font-bold text-yellow-700 bg-yellow-200 px-2 py-0.5 rounded-full">TAGIH</span>;
+                                 // [REVISI] Mengubah teks TAGIH menjadi BELUM BAYAR agar konsisten dengan Admin
+                                 statusBadge = <span className="text-[10px] font-bold text-yellow-700 bg-yellow-200 px-2 py-0.5 rounded-full">BELUM BAYAR</span>;
                              }
                            }
 
@@ -1176,8 +1177,9 @@ const App = () => {
                           <button onClick={() => setReportViewMode('grid')} className="flex items-center gap-2 text-slate-600 font-bold hover:text-blue-600 transition-colors"><ArrowLeft size={20} /> Kembali</button>
                           <button onClick={() => window.print()} className="bg-slate-800 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-slate-900 transition-all shadow-lg"><Printer size={18} /> Cetak PDF</button>
                         </div>
-                        {/* Kertas A4 */}
-                        <div className="bg-white p-8 md:p-12 rounded-none md:rounded-2xl border border-slate-200 shadow-xl print:shadow-none print:border-none print:w-full max-w-[210mm] mx-auto min-h-[297mm] relative print:p-0">
+                        
+                        {/* [REVISI] Kertas A4 Responsif: w-full di HP, tapi 210mm (A4) di layar besar/print */}
+                        <div className="bg-white p-8 md:p-12 rounded-none md:rounded-2xl border border-slate-200 shadow-xl print:shadow-none print:border-none w-full md:w-[210mm] mx-auto min-h-0 md:min-h-[297mm] relative print:p-0 print:w-full">
                           <div className="text-center border-b-4 border-slate-800 pb-4 mb-6 relative">
                              <h1 className="text-2xl font-black text-slate-800 tracking-wide uppercase">Laporan Keuangan Kos</h1>
                              <p className="text-slate-500 text-sm font-medium mt-1">Periode Laporan</p>
@@ -1387,8 +1389,8 @@ const App = () => {
                           </div>
                        </div>
                        
-                       {/* Konten Laporan A4 (Sama dengan Owner) */}
-                       <div className="bg-white p-8 md:p-12 rounded-none md:rounded-2xl border border-slate-200 shadow-xl print:shadow-none print:border-none print:w-full max-w-[210mm] mx-auto min-h-[297mm] relative print:p-0">
+                       {/* [REVISI] Kertas A4 Responsif: w-full di HP, tapi 210mm (A4) di layar besar/print */}
+                       <div className="bg-white p-8 md:p-12 rounded-none md:rounded-2xl border border-slate-200 shadow-xl print:shadow-none print:border-none w-full md:w-[210mm] mx-auto min-h-0 md:min-h-[297mm] relative print:p-0 print:w-full">
                           {/* (Kop Laporan) */}
                           <div className="text-center border-b-4 border-slate-800 pb-4 mb-6 relative">
                              <h1 className="text-2xl font-black text-slate-800 tracking-wide uppercase">Laporan Keuangan Kos</h1>
