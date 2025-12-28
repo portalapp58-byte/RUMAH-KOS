@@ -66,6 +66,35 @@ const getDaysOverdue = (dueDate) => {
   return diffDays > 0 ? diffDays : 0;
 };
 
+// [BARU] Helper: Hitung Status Hutang (Nominal & Durasi)
+const getDebtCalculation = (room) => {
+  if (!room.resident || !room.nextPaymentDate || room.status === 'Paid') {
+    return { months: 0, totalDebt: 0 };
+  }
+
+  const today = new Date();
+  const dueDate = new Date(room.nextPaymentDate);
+  
+  // Jika belum jatuh tempo, tidak ada hutang
+  if (today < dueDate) return { months: 0, totalDebt: 0 };
+
+  // Hitung selisih bulan
+  let diffMonths = (today.getFullYear() - dueDate.getFullYear()) * 12 + (today.getMonth() - dueDate.getMonth());
+
+  // Jika tanggal hari ini >= tanggal jatuh tempo, hitung bulan berjalan
+  if (today.getDate() >= dueDate.getDate()) {
+    diffMonths += 1; 
+  }
+
+  // Minimal 1 bulan jika statusnya unpaid (untuk cover bulan berjalan)
+  const debtMonths = diffMonths > 0 ? diffMonths : 1;
+  
+  // Total Hutang = Bulan Telat * Harga Kamar + (Sisa Hutang Manual di DB jika ada)
+  const totalDebt = (debtMonths * room.price) + (room.debt || 0);
+
+  return { months: debtMonths, totalDebt: totalDebt };
+};
+
 // Konstanta Nama Bulan
 const MONTH_NAMES = [
   "Januari", "Februari", "Maret", "April", "Mei", "Juni",
@@ -304,17 +333,28 @@ const App = () => {
     }
   };
 
-  // --- LOGIC PAYMENT (ADMIN) ---
+  // --- LOGIC PAYMENT (ADMIN) - MODIFIED FOR AGING DEBT ---
   const openPaymentModal = (room) => {
     const today = new Date().toISOString().split('T')[0];
+    
+    // [MODIFIKASI] Hitung Hutang Otomatis
+    const { totalDebt } = getDebtCalculation(room); 
+    
+    // Jika ada hutang, default form amount adalah Total Hutang. Jika tidak, harga kamar normal.
+    const suggestedAmount = totalDebt > 0 ? totalDebt : room.price;
+
+    // Kalkulasi estimasi due date berikutnya
+    const priceSafe = room.price > 0 ? room.price : 1; // Prevent division by zero
+    const monthsToPay = Math.floor(suggestedAmount / priceSafe);
+    
     const baseDate = room.nextPaymentDate || today;
-    const nextDue = addMonths(baseDate, 1);
+    const nextDue = addMonths(baseDate, monthsToPay > 0 ? monthsToPay : 1);
 
     setPaymentFormData({
       roomId: room.id,
       roomNumber: room.number,
       resident: room.resident,
-      amount: room.price + room.debt, 
+      amount: suggestedAmount, 
       date: today,
       method: 'Transfer',
       nextDueDate: nextDue
@@ -322,12 +362,19 @@ const App = () => {
     setShowPaymentModal(true);
   };
 
-  // --- SIMPAN PEMBAYARAN KE FIREBASE ---
+  // --- SIMPAN PEMBAYARAN KE FIREBASE - MODIFIED FOR AGING DEBT ---
   const handleConfirmPayment = async () => {
     try {
+      // [MODIFIKASI] Logika potong hutang / majukan bulan
+      const roomPrice = rooms.find(r => r.id === paymentFormData.roomId)?.price || 0;
+      const priceSafe = roomPrice > 0 ? roomPrice : 1; // Safety check
+      
+      const monthsPaid = Math.floor(paymentFormData.amount / priceSafe);
+      
+      // Update data di Firebase
       await updateDoc(doc(db, "rooms", paymentFormData.roomNumber), {
-        status: 'Paid',
-        debt: 0,
+        status: 'Paid', // Sementara set Paid, nanti UI handle realtime overdue
+        debt: 0, // Reset hutang manual karena sudah pakai logic tanggal
         nextPaymentDate: paymentFormData.nextDueDate 
       });
 
@@ -336,7 +383,7 @@ const App = () => {
         roomId: paymentFormData.roomNumber,
         amount: paymentFormData.amount,
         date: paymentFormData.date,
-        type: 'Sewa Bulanan',
+        type: `Sewa (${monthsPaid} Bulan)`, // Update keterangan biar jelas
         method: paymentFormData.method
       };
       await addDoc(collection(db, "payments"), newPayment);
@@ -478,7 +525,11 @@ const App = () => {
 
   // --- LOGIC OWNER MONITOR ---
   const occupiedRooms = rooms.filter(r => r.resident).length;
-  const overdueRooms = rooms.filter(r => r.resident && (r.status === 'Unpaid' || getDaysOverdue(r.nextPaymentDate) > 0));
+  // Update logic overdue room untuk Owner juga
+  const overdueRooms = rooms.filter(r => {
+    const debt = getDebtCalculation(r);
+    return r.resident && (r.status === 'Unpaid' || debt.totalDebt > 0);
+  });
   const currentMonthIncome = getMonthlyIncome(new Date().getMonth(), new Date().getFullYear());
 
 
@@ -810,26 +861,26 @@ const App = () => {
                 <>
                   {/* Rekap Header Owner */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                     {/* Kamar Terisi */}
-                     <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+                      {/* Kamar Terisi */}
+                      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
                         <div>
                            <p className="text-sm font-bold text-slate-500 mb-1">Kamar Terisi</p>
                            <h3 className="text-3xl font-black text-slate-800">{occupiedRooms} <span className="text-sm font-medium text-slate-400">/ {rooms.length}</span></h3>
                         </div>
                         <div className="bg-blue-50 p-3 rounded-xl text-blue-600"><Bed size={28} /></div>
-                     </div>
+                      </div>
 
-                     {/* Total Pendapatan */}
-                     <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+                      {/* Total Pendapatan */}
+                      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
                         <div>
                            <p className="text-sm font-bold text-slate-500 mb-1">Pendapatan Bulan Ini</p>
                            <h3 className="text-2xl font-black text-green-600">{formatIDR(currentMonthIncome)}</h3>
                         </div>
                         <div className="bg-green-50 p-3 rounded-xl text-green-600"><TrendingUp size={28} /></div>
-                     </div>
+                      </div>
 
-                     {/* Kamar Nunggak */}
-                     <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm md:col-span-1">
+                      {/* Kamar Nunggak */}
+                      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm md:col-span-1">
                         <div className="flex justify-between items-start mb-2">
                            <p className="text-sm font-bold text-slate-500">Nunggak / Belum Bayar</p>
                            <div className="bg-red-50 p-2 rounded-lg text-red-600"><AlertCircle size={20}/></div>
@@ -846,17 +897,19 @@ const App = () => {
                         ) : (
                            <p className="text-xs text-slate-400 italic mt-2">Tidak ada yang menunggak.</p>
                         )}
-                     </div>
+                      </div>
                   </div>
 
                   {/* Grid Dashboard */}
                   <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm mt-6">
-                     <h3 className="font-bold text-lg text-slate-800 mb-6">Status Kamar Real-time</h3>
-                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                      <h3 className="font-bold text-lg text-slate-800 mb-6">Status Kamar Real-time</h3>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                         {rooms.map(room => {
                            const isOccupied = !!room.resident;
-                           const overdueDays = getDaysOverdue(room.nextPaymentDate);
-                           const isOverdue = isOccupied && overdueDays > 0;
+                           
+                           // [MODIFIKASI] Tampilkan Hutang di Card
+                           const debtInfo = getDebtCalculation(room);
+                           const isOverdue = isOccupied && debtInfo.totalDebt > 0 && room.status !== 'Paid';
                            const isPaid = room.status === 'Paid';
 
                            let cardClass = 'bg-white border-slate-200 hover:border-blue-300';
@@ -865,7 +918,12 @@ const App = () => {
                            if (isOccupied) {
                              if (isOverdue) {
                                  cardClass = 'bg-red-50 border-red-300 hover:border-red-500';
-                                 statusBadge = <span className="text-[10px] font-bold text-white bg-red-500 px-2 py-0.5 rounded-full">TELAT</span>;
+                                 statusBadge = (
+                                    <div className="text-right">
+                                       <span className="block text-[10px] font-bold text-white bg-red-500 px-2 py-0.5 rounded-full mb-1">TELAT {debtInfo.months} BLN</span>
+                                       <span className="text-xs font-black text-red-600">-{formatIDR(debtInfo.totalDebt)}</span>
+                                    </div>
+                                 );
                              } else if (isPaid) {
                                  cardClass = 'bg-green-50 border-green-300 hover:border-green-500';
                                  statusBadge = <span className="text-[10px] font-bold text-white bg-green-500 px-2 py-0.5 rounded-full">LUNAS</span>;
@@ -898,7 +956,7 @@ const App = () => {
                              </div>
                            );
                         })}
-                     </div>
+                      </div>
                   </div>
                 </>
               )}
@@ -943,7 +1001,7 @@ const App = () => {
                                   </div>
                                   <p className="text-lg font-black mb-3">{formatIDR(income)}</p>
                                   <div className="flex items-center gap-1 text-[10px] font-bold uppercase opacity-80">
-                                     {isDeposited ? <CheckCircle2 size={12}/> : <Clock size={12}/>} {statusText}
+                                      {isDeposited ? <CheckCircle2 size={12}/> : <Clock size={12}/>} {statusText}
                                   </div>
                                   <button 
                                      className="absolute inset-0 z-0" 
@@ -1023,8 +1081,10 @@ const App = () => {
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                     {rooms.map(room => {
                       const isOccupied = !!room.resident;
-                      const overdueDays = getDaysOverdue(room.nextPaymentDate);
-                      const isOverdue = isOccupied && overdueDays > 0;
+                      
+                      // [MODIFIKASI] Tampilkan Hutang di Dashboard Admin
+                      const debtInfo = getDebtCalculation(room);
+                      const isOverdue = isOccupied && debtInfo.totalDebt > 0 && room.status !== 'Paid';
                       const isPaid = room.status === 'Paid';
 
                       let cardClass = 'bg-white border-slate-200 hover:border-blue-300';
@@ -1033,7 +1093,12 @@ const App = () => {
                       if (isOccupied) {
                         if (isOverdue) {
                           cardClass = 'bg-red-50 border-red-300 hover:border-red-500';
-                          statusBadge = <span className="text-[10px] font-bold text-white bg-red-500 px-2 py-0.5 rounded-full">TELAT {overdueDays} HARI</span>;
+                          statusBadge = (
+                             <div className="text-right">
+                               <span className="block text-[10px] font-bold text-white bg-red-500 px-2 py-0.5 rounded-full mb-1">TELAT {debtInfo.months} BLN</span>
+                               <span className="text-xs font-black text-red-600">-{formatIDR(debtInfo.totalDebt)}</span>
+                             </div>
+                          );
                         } else if (isPaid) {
                           cardClass = 'bg-green-50 border-green-300 hover:border-green-500';
                           statusBadge = <span className="text-[10px] font-bold text-white bg-green-500 px-2 py-0.5 rounded-full">LUNAS</span>;
