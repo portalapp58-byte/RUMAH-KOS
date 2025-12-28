@@ -1,13 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react'; // Tambah useRef
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   LayoutDashboard, Bed, History, Settings, LogOut, Plus, 
   Printer, Home, CreditCard, AlertCircle, UserPlus, Pencil, 
   X, Users, ChevronRight, Info, Upload, FileText, DoorOpen, 
   CalendarCheck, Wallet, CheckCircle2, Calendar, ArrowLeft, 
-  Stamp, Clock, Save, Lock, TrendingUp, Calculator, UserCog, Download // Tambah icon Download
+  Stamp, Clock, Save, Lock, TrendingUp, Calculator, UserCog, Download 
 } from 'lucide-react';
 
-// Import html2pdf (Pastikan sudah npm install html2pdf.js)
 import html2pdf from 'html2pdf.js';
 
 import { initializeApp } from "firebase/app";
@@ -140,7 +139,7 @@ const App = () => {
   const [reportViewMode, setReportViewMode] = useState('grid'); // 'grid' atau 'detail'
   const [selectedMonthIndex, setSelectedMonthIndex] = useState(null); // 0-11
   const [depositStatus, setDepositStatus] = useState({}); // { "2024-0": true } -> Format YYYY-MonthIndex
-  const reportContentRef = useRef(null); // Ref untuk target HTML to PDF
+  const reportContentRef = useRef(null); 
 
   // --- CONFIG ---
   const [config, setConfig] = useState({
@@ -549,9 +548,6 @@ const App = () => {
       jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
     };
 
-    // Tampilkan notifikasi loading (opsional)
-    // alert("Sedang mengunduh PDF..."); // Boleh dihapus jika mengganggu
-
     html2pdf().set(opt).from(element).save();
   };
 
@@ -646,7 +642,7 @@ const App = () => {
             </button>
           </div>
           <div className="mt-6 text-center text-xs text-slate-400">
-            <p>Aplikasi Kode V.5.4 (Auto PDF Download):</p>
+            <p>Aplikasi Kode V.5.5 (Clean White PDF):</p>
             <p>Support By Malang Florist Group</p>
           </div>
         </div>
@@ -1204,8 +1200,9 @@ const App = () => {
                           </div>
                         </div>
                         
-                        {/* Kertas A4 Responsif dengan Ref untuk html2pdf */}
-                        <div ref={reportContentRef} className="bg-white p-8 md:p-12 rounded-none md:rounded-2xl border border-slate-200 shadow-xl print:shadow-none print:border-none w-full md:w-[210mm] mx-auto min-h-0 md:min-h-[297mm] relative print:p-0 print:w-full">
+                        {/* [REVISI] Kertas A4 Responsif: w-full di HP, tapi 210mm (A4) di layar besar/print */}
+                        {/* NOTE: CLASS BORDER/SHADOW/ROUNDED DIHAPUS DISINI AGAR PDF BERSIH */}
+                        <div ref={reportContentRef} className="bg-white p-8 md:p-12 w-full md:w-[210mm] mx-auto min-h-0 md:min-h-[297mm] relative print:p-0 print:w-full">
                           <div className="text-center border-b-4 border-slate-800 pb-4 mb-6 relative">
                              <h1 className="text-2xl font-black text-slate-800 tracking-wide uppercase">Laporan Keuangan Kos</h1>
                              <p className="text-slate-500 text-sm font-medium mt-1">Periode Laporan</p>
@@ -1417,7 +1414,8 @@ const App = () => {
                        </div>
                        
                        {/* [REVISI] Kertas A4 Responsif: w-full di HP, tapi 210mm (A4) di layar besar/print */}
-                       <div ref={reportContentRef} className="bg-white p-8 md:p-12 rounded-none md:rounded-2xl border border-slate-200 shadow-xl print:shadow-none print:border-none w-full md:w-[210mm] mx-auto min-h-0 md:min-h-[297mm] relative print:p-0 print:w-full">
+                       {/* NOTE: CLASS BORDER/SHADOW/ROUNDED DIHAPUS DISINI AGAR PDF BERSIH */}
+                       <div ref={reportContentRef} className="bg-white p-8 md:p-12 w-full md:w-[210mm] mx-auto min-h-0 md:min-h-[297mm] relative print:p-0 print:w-full">
                           {/* (Kop Laporan) */}
                           <div className="text-center border-b-4 border-slate-800 pb-4 mb-6 relative">
                              <h1 className="text-2xl font-black text-slate-800 tracking-wide uppercase">Laporan Keuangan Kos</h1>
