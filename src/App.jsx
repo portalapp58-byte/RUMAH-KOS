@@ -527,18 +527,74 @@ export default function App() {
     </button>
   );
 
-  // --- LOGIN VIEW ---
-  if (!isAppLoggedIn) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center p-6">
-        {toast.show && (<div className="fixed top-10 left-1/2 transform -translate-x-1/2 bg-red-600 text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-2 z-[100] animate-in slide-in-from-top-5"><AlertCircle size={20} /> <span className="font-bold">{toast.message}</span></div>)}
-        <div className="max-w-md w-full bg-white/80 backdrop-blur-xl rounded-3xl shadow-2xl p-8 border border-white">
-          <div className="text-center mb-10"><div className="bg-gradient-to-tr from-indigo-600 to-violet-600 w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-6 text-white shadow-xl shadow-indigo-200 rotate-3"><Home size={40} strokeWidth={1.5} /></div><h1 className="text-3xl font-black text-slate-800 tracking-tight">CBR-KOS Manager</h1><p className="text-slate-400 font-medium">System By Malang Florist Group</p></div>
-          <div className="space-y-6"><div className="relative group"><div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Lock size={20} className="text-indigo-400 group-focus-within:text-indigo-600 transition-colors" /></div><input type="password" placeholder="Masukkan Kode Akses" className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 outline-none transition-all font-bold text-slate-700 placeholder:font-normal" value={loginCode} onChange={(e) => setLoginCode(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleLogin()} /></div><button onClick={handleLogin} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-2xl shadow-xl shadow-indigo-200 active:scale-95 transition-all flex items-center justify-center gap-2">Masuk Aplikasi <ChevronRight size={20} /></button></div>
+// --- LOGIN VIEW ---
+if (!isAppLoggedIn) {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center p-6">
+
+      {toast.show && (
+        <div className="fixed top-10 left-1/2 transform -translate-x-1/2 bg-red-600 text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-2 z-[100] animate-in slide-in-from-top-5">
+          <AlertCircle size={20} />
+          <span className="font-bold">{toast.message}</span>
+        </div>
+      )}
+
+      <div className="max-w-md w-full bg-white/80 backdrop-blur-xl rounded-3xl shadow-2xl p-8 border border-white">
+
+        <div className="text-center mb-10">
+          <div className="bg-gradient-to-tr from-indigo-600 to-violet-600 w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-6 text-white shadow-xl shadow-indigo-200 rotate-3">
+            <Home size={40} strokeWidth={1.5} />
+          </div>
+
+          <h1 className="text-3xl font-black text-slate-800 tracking-tight">
+            CBR-KOS Manager
+          </h1>
+
+          <p className="text-slate-400 font-medium">
+            System By Malang Florist Group
+          </p>
+        </div>
+
+        {/* FORM LOGIN */}
+        <div className="space-y-6">
+
+          <div className="relative group">
+            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+              <Lock size={20} className="text-indigo-400 group-focus-within:text-indigo-600 transition-colors" />
+            </div>
+
+            <input
+              type="password"
+              placeholder="Masukkan Kode Akses"
+              className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl
+                         focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 outline-none
+                         transition-all font-bold text-slate-700 placeholder:font-normal"
+              value={loginCode}
+              onChange={(e) => setLoginCode(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
+            />
+          </div>
+
+          <button
+            onClick={handleLogin}
+            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4
+                       rounded-2xl shadow-xl shadow-indigo-200 active:scale-95 transition-all
+                       flex items-center justify-center gap-2"
+          >
+            Masuk Aplikasi <ChevronRight size={20} />
+          </button>
+
+          {/* 👇 teks versi — sudah di tempat yang benar */}
+          <p className="text-center text-xs text-slate-400">
+            Versi 1.0.0 — CBR-KOS Manager
+          </p>
+
         </div>
       </div>
-    );
-  }
+    </div>
+  );
+}
+
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row print:bg-white text-sans relative">
