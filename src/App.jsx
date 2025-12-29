@@ -6,7 +6,7 @@ import {
   CalendarCheck, Wallet, CheckCircle2, Calendar, ArrowLeft, 
   Stamp, Clock, Save, Lock, TrendingUp, Calculator, UserCog, Download,
   Menu, Search, Filter, MoreHorizontal, UserCheck, MapPin, Check, ListChecks, 
-  AlertTriangle, TrendingDown, Receipt, DollarSign, ChevronLeft, Trash2
+  AlertTriangle, TrendingDown, Receipt, DollarSign, ChevronLeft, Trash2, RefreshCw
 } from 'lucide-react';
 import { initializeApp } from "firebase/app";
 import { 
@@ -615,7 +615,7 @@ if (!isAppLoggedIn) {
           <div className="text-center space-y-0.5">
 
           <p className="text-xs text-slate-400">
-              Versi 7.5.0 — CBR-KOS Manager
+              Versi 7.5.1 — CBR-KOS Manager
           </p>
 
           <p className="text-[11px] font-bold text-slate-500">
@@ -1097,6 +1097,17 @@ if (!isAppLoggedIn) {
                     <div className="flex gap-3 justify-center"><button onClick={() => setShowCheckoutModal(false)} className="px-5 py-2.5 border rounded-xl font-bold text-slate-500 hover:bg-slate-50">Batal</button><button onClick={handleConfirmCheckout} className="px-5 py-2.5 bg-red-500 text-white rounded-xl font-bold hover:bg-red-600 shadow-lg shadow-red-200">Ya, Checkout</button></div>
                 </div>
             </div>
+        )}
+
+        {/* --- FLOATING REFRESH BUTTON (KHUSUS OWNER/MONITOR) --- */}
+        {(userRole === 'owner' || activeTab === 'monitor') && (
+            <button 
+                onClick={() => window.location.reload()} 
+                className="fixed bottom-8 right-8 bg-indigo-600 text-white p-4 rounded-full shadow-2xl hover:bg-indigo-700 transition-all z-[80] hover:scale-110 active:scale-95 group"
+                title="Refresh Data"
+            >
+                <RefreshCw size={24} className="group-hover:animate-spin" />
+            </button>
         )}
     </div>
   );
