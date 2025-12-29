@@ -612,7 +612,7 @@ export default function App() {
                         {/* Room Grid (Same as before) */}
                         <div>
                             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end mb-6">
-                                <div><h3 className="text-xl font-bold text-slate-900">DAFTAR KAMAR - SATUS KAMAR</h3>{userRole === 'admin' && <p className="text-sm text-slate-500">Klik pada kotak kamar untuk membuka menu aksi.</p>}</div>
+                                <div><h3 className="text-xl font-bold text-slate-900">DAFTAR KAMAR - SATUS KAMAR</h3>{userRole === 'admin' && <p className="text-sm text-slate-300">Pilih Kotak Untuk Membuka Menu Aksi.</p>}</div>
                                 <div className="flex gap-2 text-xs font-bold"><span className="flex items-center gap-1.5 bg-white border px-3 py-1.5 rounded-lg text-slate-600"><div className="w-2.5 h-2.5 rounded-full bg-slate-200"></div> Kosong</span><span className="flex items-center gap-1.5 bg-white border px-3 py-1.5 rounded-lg text-slate-600"><div className="w-2.5 h-2.5 rounded-full bg-green-500"></div> Lunas</span><span className="flex items-center gap-1.5 bg-white border px-3 py-1.5 rounded-lg text-slate-600"><div className="w-2.5 h-2.5 rounded-full bg-yellow-400"></div> Jatuh Tempo</span><span className="flex items-center gap-1.5 bg-white border px-3 py-1.5 rounded-lg text-slate-600"><div className="w-2.5 h-2.5 rounded-full bg-red-500"></div> Telat</span></div>
                             </div>
                             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
