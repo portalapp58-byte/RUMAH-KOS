@@ -158,6 +158,7 @@ export default function App() {
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false); 
+  const [refreshTrigger, setRefreshTrigger] = useState(0); // STATE BARU UNTUK REFRESH DATA
 
   // UI States
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
@@ -174,7 +175,7 @@ export default function App() {
   
   // Expense Modal State & Filters
   const [showExpenseModal, setShowExpenseModal] = useState(false);
-  const [editingExpenseId, setEditingExpenseId] = useState(null); // State baru untuk ID edit pengeluaran
+  const [editingExpenseId, setEditingExpenseId] = useState(null);
   const [expenseFormData, setExpenseFormData] = useState({ description: '', amount: 0, date: '', category: 'Operasional' });
   
   // Expenses Filter State (Arsip Pengeluaran)
@@ -231,9 +232,12 @@ export default function App() {
     }, 3000);
   };
 
-  // --- DATA FETCHING (Menggunakan getCollectionRef) ---
+  // --- DATA FETCHING (DIPERBARUI UNTUK MENANGANI REFRESH TRIGGER) ---
   useEffect(() => {
     if (!user) return;
+    
+    // Set loading true saat refresh ditekan
+    setLoading(true);
 
     // Fetch Rooms
     const roomsRef = getCollectionRef('rooms');
@@ -266,7 +270,7 @@ export default function App() {
         roomList.sort((a, b) => a.id - b.id);
         setRooms(roomList);
       }
-      setLoading(false);
+      setLoading(false); // Matikan loading setelah data masuk
     }, (err) => console.error("Err Rooms:", err));
 
     // Fetch Payments
@@ -306,7 +310,7 @@ export default function App() {
       unsubExpenses();
       unsubSettings();
     };
-  }, [user]);
+  }, [user, refreshTrigger]); // Dependency ditambahkan refreshTrigger agar ulang fetch saat berubah
 
   // --- LOGIC AUTH & CORE ---
   const handleLogin = () => {
@@ -328,6 +332,20 @@ export default function App() {
     setUserRole(null);
     setLoginCode('');
     setActiveTab('dashboard');
+  };
+
+  const handleSoftRefresh = () => {
+      setLoading(true);
+      // Ubah angka trigger untuk memicu useEffect berjalan ulang
+      setRefreshTrigger(prev => prev + 1);
+      
+      // Tampilkan toast agar user tahu sedang refresh
+      showToast("Menyinkronkan data terbaru...", "success");
+      
+      // Safety timeout jika koneksi sangat cepat
+      setTimeout(() => {
+          setLoading(false);
+      }, 1000);
   };
 
   // --- LOGIC NEW FEATURE: EXPENSES (EDIT & ADD) ---
@@ -615,7 +633,7 @@ if (!isAppLoggedIn) {
           <div className="text-center space-y-0.5">
 
           <p className="text-xs text-slate-400">
-              Versi 7.5.1 — CBR-KOS Manager
+              Versi 7.5.2 — CBR-KOS Manager
           </p>
 
           <p className="text-[11px] font-bold text-slate-500">
@@ -1099,14 +1117,14 @@ if (!isAppLoggedIn) {
             </div>
         )}
 
-        {/* --- FLOATING REFRESH BUTTON (KHUSUS OWNER/MONITOR) --- */}
+        {/* --- FLOATING REFRESH BUTTON (UPDATED: SOFT REFRESH) --- */}
         {(userRole === 'owner' || activeTab === 'monitor') && (
             <button 
-                onClick={() => window.location.reload()} 
+                onClick={handleSoftRefresh} 
                 className="fixed bottom-8 right-8 bg-indigo-600 text-white p-4 rounded-full shadow-2xl hover:bg-indigo-700 transition-all z-[80] hover:scale-110 active:scale-95 group"
                 title="Refresh Data"
             >
-                <RefreshCw size={24} className="group-hover:animate-spin" />
+                <RefreshCw size={24} className={loading ? "animate-spin" : "group-hover:rotate-180 transition-transform duration-500"} />
             </button>
         )}
     </div>
