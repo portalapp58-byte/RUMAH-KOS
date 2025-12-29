@@ -173,9 +173,9 @@ export default function App() {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
   
-  // Custom Confirmation Modal State (Pengganti confirm() bawaan)
+  // Custom Confirmation Modal State
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState(null); // { id: '...', type: 'expense' | 'other' }
+  const [deleteTarget, setDeleteTarget] = useState(null); 
   
   // Expense Modal State & Filters
   const [showExpenseModal, setShowExpenseModal] = useState(false);
@@ -511,7 +511,7 @@ if (!isAppLoggedIn) {
             <input type="password" placeholder="Masukkan Kode Akses" className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 outline-none transition-all font-bold text-slate-700 placeholder:font-normal" value={loginCode} onChange={(e) => setLoginCode(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleLogin()} />
           </div>
           <button onClick={handleLogin} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-2xl shadow-xl shadow-indigo-200 active:scale-95 transition-all flex items-center justify-center gap-2">Masuk Aplikasi <ChevronRight size={20} /></button>
-          <div className="text-center space-y-0.5"><p className="text-xs text-slate-400">Versi 7.6.1 — CBR-KOS Manager</p><p className="text-[11px] font-bold text-slate-500">Dikembangkan oleh Malang Florist Group</p></div>
+          <div className="text-center space-y-0.5"><p className="text-xs text-slate-400">Versi 7.6.2 — CBR-KOS Manager</p><p className="text-[11px] font-bold text-slate-500">Dikembangkan oleh Malang Florist Group</p></div>
         </div>
       </div>
     </div>
@@ -774,43 +774,16 @@ if (!isAppLoggedIn) {
                                             </div>
                                             {depositStatus[`${selectedYear}-${selectedMonthIndex}`] && (<div className="absolute top-10 right-10 opacity-20 rotate-[-15deg] border-4 border-green-600 text-green-600 font-black text-2xl md:text-4xl px-4 md:px-6 py-2 rounded-xl uppercase">SUDAH DISETOR</div>)}
                                             
-{/* Financial Summary */}
-<div className="grid grid-cols-3 gap-2 md:gap-4 mb-8">
-
-  <div className="bg-green-50 p-3 md:p-4 rounded-xl border border-green-100 text-center">
-    <p className="text-[10px] md:text-xs font-bold text-green-600 uppercase mb-1">
-      Total Pemasukan
-    </p>
-    <p className="text-base sm:text-lg md:text-xl font-black text-green-700 break-words">
-      {formatIDR(getMonthlyIncome(selectedMonthIndex, selectedYear))}
-    </p>
-  </div>
-
-  <div className="bg-red-50 p-3 md:p-4 rounded-xl border border-red-100 text-center">
-    <p className="text-[10px] md:text-xs font-bold text-red-600 uppercase mb-1">
-      Total Pengeluaran
-    </p>
-    <p className="text-base sm:text-lg md:text-xl font-black text-red-700 break-words">
-      {formatIDR(getMonthlyExpense(selectedMonthIndex, selectedYear))}
-    </p>
-  </div>
-
-  <div className="bg-slate-800 p-3 md:p-4 rounded-xl border border-slate-700 text-center text-white">
-    <p className="text-[10px] md:text-xs font-bold text-slate-400 uppercase mb-1">
-      Laba Bersih
-    </p>
-    <p className="text-base sm:text-lg md:text-2xl font-black tracking-tight break-words">
-      {formatIDR(
-        getMonthlyIncome(selectedMonthIndex, selectedYear) -
-        getMonthlyExpense(selectedMonthIndex, selectedYear)
-      )}
-    </p>
-  </div>
-
-</div>
+                                            {/* Financial Summary */}
+                                            <div className="grid grid-cols-3 gap-2 md:gap-4 mb-8">
+                                                <div className="bg-green-50 p-3 md:p-4 rounded-xl border border-green-100 text-center"><p className="text-[10px] md:text-xs font-bold text-green-600 uppercase mb-1">Total Pemasukan</p><p className="text-base sm:text-lg md:text-xl font-black text-green-700 break-words">{formatIDR(getMonthlyIncome(selectedMonthIndex, selectedYear))}</p></div>
+                                                <div className="bg-red-50 p-3 md:p-4 rounded-xl border border-red-100 text-center"><p className="text-[10px] md:text-xs font-bold text-red-600 uppercase mb-1">Total Pengeluaran</p><p className="text-base sm:text-lg md:text-xl font-black text-red-700 break-words">{formatIDR(getMonthlyExpense(selectedMonthIndex, selectedYear))}</p></div>
+                                                <div className="bg-slate-800 p-3 md:p-4 rounded-xl border border-slate-700 text-center text-white"><p className="text-[10px] md:text-xs font-bold text-slate-400 uppercase mb-1">Laba Bersih</p><p className="text-base sm:text-lg md:text-2xl font-black tracking-tight break-words">{formatIDR(getMonthlyIncome(selectedMonthIndex, selectedYear) - getMonthlyExpense(selectedMonthIndex, selectedYear))}</p></div>
+                                            </div>
 
                                             {/* Two Column Grid for Income and Expense */}
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                                            {/* FIX: FORCE 2 COLUMNS ON ALL SCREENS FOR A4 LOOK (grid-cols-2) */}
+                                            <div className="grid grid-cols-2 gap-2 md:gap-6 mb-8">
                                                 {/* Left Column: Expenses */}
                                                 <div>
                                                     <h3 className="font-bold text-slate-800 mb-2 flex items-center gap-2 border-b pb-2"><TrendingDown size={18} className="text-red-600"/> Rincian Pengeluaran</h3>
