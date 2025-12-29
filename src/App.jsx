@@ -769,12 +769,12 @@ if (!isAppLoggedIn) {
                                     <div ref={reportContentRef} className="p-4 md:p-10 print:p-6 relative">
 
                                             <div className="flex justify-between items-end border-b-4 border-slate-800 pb-6 mb-8">
-                                                <div><h1 className="text-xl md:text-3xl font-black text-slate-800 tracking-tight uppercase">Laporan Management Kos</h1><p className="text-slate-500 font-medium text-xs md:text-base">By MFG-System</p></div>
+                                                <div><h1 className="text-xl md:text-3xl font-black text-slate-800 tracking-tight uppercase">Laporan CBR-Kos</h1><p className="text-slate-500 font-medium text-xs md:text-base">By MFG-System</p></div>
                                                 <div className="text-right"><p className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Periode</p><h2 className="text-sm md:text-xl font-bold text-indigo-600 bg-indigo-50 px-3 py-1 rounded-lg border border-indigo-100">{MONTH_NAMES[selectedMonthIndex]} {selectedYear}</h2></div>
                                             </div>
                                             {depositStatus[`${selectedYear}-${selectedMonthIndex}`] && (<div className="absolute top-10 right-10 opacity-20 rotate-[-15deg] border-4 border-green-600 text-green-600 font-black text-2xl md:text-4xl px-4 md:px-6 py-2 rounded-xl uppercase">SUDAH DISETOR</div>)}
                                             
-                                            {/* Financial Summary */}
+{/* Financial Summary */}
 <div className="grid grid-cols-3 gap-2 md:gap-4 mb-8">
 
   <div className="bg-green-50 p-3 md:p-4 rounded-xl border border-green-100 text-center">
