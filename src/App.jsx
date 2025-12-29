@@ -511,7 +511,7 @@ if (!isAppLoggedIn) {
             <input type="password" placeholder="Masukkan Kode Akses" className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 outline-none transition-all font-bold text-slate-700 placeholder:font-normal" value={loginCode} onChange={(e) => setLoginCode(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleLogin()} />
           </div>
           <button onClick={handleLogin} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-2xl shadow-xl shadow-indigo-200 active:scale-95 transition-all flex items-center justify-center gap-2">Masuk Aplikasi <ChevronRight size={20} /></button>
-          <div className="text-center space-y-0.5"><p className="text-xs text-slate-400">Versi 7.6.0 — CBR-KOS Manager</p><p className="text-[11px] font-bold text-slate-500">Dikembangkan oleh Malang Florist Group</p></div>
+          <div className="text-center space-y-0.5"><p className="text-xs text-slate-400">Versi 7.6.1 — CBR-KOS Manager</p><p className="text-[11px] font-bold text-slate-500">Dikembangkan oleh Malang Florist Group</p></div>
         </div>
       </div>
     </div>
@@ -788,22 +788,15 @@ if (!isAppLoggedIn) {
                                                     <h3 className="font-bold text-slate-800 mb-2 flex items-center gap-2 border-b pb-2"><TrendingDown size={18} className="text-red-600"/> Rincian Pengeluaran</h3>
                                                     <div className="overflow-x-auto">
                                                         <table className="w-full text-[10px] text-left">
-                                                            <thead className="bg-slate-100 text-slate-600 font-bold uppercase"><tr><th className="px-2 py-1.5">Tanggal</th><th className="px-2 py-1.5">Keterangan</th><th className="px-2 py-1.5 text-right">Jumlah</th><th className="px-2 py-1.5 text-center print:hidden">Aksi</th></tr></thead>
+                                                            <thead className="bg-slate-100 text-slate-600 font-bold uppercase"><tr><th className="px-2 py-1.5">Tanggal</th><th className="px-2 py-1.5">Keterangan</th><th className="px-2 py-1.5 text-right">Jumlah</th></tr></thead>
                                                             <tbody className="divide-y divide-slate-100">
                                                                 {getFilteredExpenses().length > 0 ? (getFilteredExpenses().map((exp) => (
                                                                     <tr key={exp.id} className="group hover:bg-slate-50">
                                                                         <td className="px-2 py-1">{formatDateIndo(exp.date)}</td>
                                                                         <td className="px-2 py-1">{exp.description} <span className="text-[9px] text-slate-400">({exp.category})</span></td>
                                                                         <td className="px-2 py-1 text-right font-bold text-red-600">{formatIDR(exp.amount)}</td>
-                                                                        {/* TOMBOL EDIT/HAPUS DI REPORT */}
-                                                                        <td className="px-2 py-1 text-center print:hidden">
-                                                                            <div className="flex justify-center gap-1 opacity-0 group-hover:opacity-100">
-                                                                                <button onClick={() => openEditExpense(exp)} className="text-amber-500 hover:text-amber-700"><Pencil size={12}/></button>
-                                                                                <button onClick={() => requestDeleteExpense(exp.docId)} className="text-red-500 hover:text-red-700"><Trash2 size={12}/></button>
-                                                                            </div>
-                                                                        </td>
                                                                     </tr>
-                                                                ))) : (<tr><td colSpan={4} className="px-2 py-4 text-center text-slate-400 italic">Tidak ada pengeluaran.</td></tr>)}
+                                                                ))) : (<tr><td colSpan={3} className="px-2 py-4 text-center text-slate-400 italic">Tidak ada pengeluaran.</td></tr>)}
                                                             </tbody>
                                                         </table>
                                                     </div>
