@@ -611,8 +611,8 @@ export default function App() {
 
                         {/* Room Grid (Same as before) */}
                         <div>
-                            <div className="flex justify-between items-end mb-6">
-                                <div><h3 className="text-base sm:text-lg font-semibold text-slate-800">DAFTAR KAMAR</h3>{userRole === 'admin' && <p className="text-sm text-slate-500">Klik pada kotak kamar untuk membuka menu aksi.</p>}</div>
+                            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end mb-6">
+                                <div><h3 className="text-xl font-bold text-slate-800">DAFTAR KAMAR</h3>{userRole === 'admin' && <p className="text-sm text-slate-500">Klik pada kotak kamar untuk membuka menu aksi.</p>}</div>
                                 <div className="flex gap-2 text-xs font-bold"><span className="flex items-center gap-1.5 bg-white border px-3 py-1.5 rounded-lg text-slate-600"><div className="w-2.5 h-2.5 rounded-full bg-slate-200"></div> Kosong</span><span className="flex items-center gap-1.5 bg-white border px-3 py-1.5 rounded-lg text-slate-600"><div className="w-2.5 h-2.5 rounded-full bg-green-500"></div> Lunas</span><span className="flex items-center gap-1.5 bg-white border px-3 py-1.5 rounded-lg text-slate-600"><div className="w-2.5 h-2.5 rounded-full bg-yellow-400"></div> Jatuh Tempo (H s/d H+3)</span><span className="flex items-center gap-1.5 bg-white border px-3 py-1.5 rounded-lg text-slate-600"><div className="w-2.5 h-2.5 rounded-full bg-red-500"></div> Telat ({'>'} H+3)</span></div>
                             </div>
                             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
@@ -767,7 +767,7 @@ export default function App() {
                                         <button onClick={handleDownloadPDF} className="bg-slate-800 text-white px-5 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-slate-900 transition-all shadow-lg"><Download size={18} /> PDF</button>
                                     </div>
                                 </div>
-
+                                
                                 <div className="w-full md:w-[210mm] mx-auto bg-white shadow-2xl md:min-h-[297mm] print:w-[210mm] print:min-h-[297mm] print:shadow-none print:border-none">
 
                                     <div ref={reportContentRef} className="p-4 md:p-10 print:p-6 p-10 md:p-12 relative">
