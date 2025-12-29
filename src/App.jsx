@@ -43,8 +43,7 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 const getCollectionRef = (collName) => {
-  // --- VERSI PRODUCTION 
-  // return collection(db, collName);
+  return collection(db, collName);
 
 // ============================================================================
 
