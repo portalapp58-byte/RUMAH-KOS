@@ -585,8 +585,12 @@ if (!isAppLoggedIn) {
           </button>
 
           {/* 👇 teks versi — sudah di tempat yang benar */}
-          <p className="text-center text-xs text-slate-400">
+          <p className="text-center text-xs text-slate-300">
             Versi 1.0.0 — CBR-KOS Manager
+          </p>
+
+          <p className="text-center text-[11px] text-slate-300">
+            Dikembangkan Oleh Malang Florist Group
           </p>
 
         </div>
