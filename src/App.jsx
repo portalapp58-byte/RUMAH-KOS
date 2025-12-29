@@ -502,7 +502,8 @@ export default function App() {
       } 
   };
 
-  const handleDownloadPDF = () => { const element = reportContentRef.current; if (!element || !window.html2pdf) { alert("Library PDF sedang dimuat atau tidak tersedia. Coba print biasa."); return; } const opt = { margin: 10, filename: `Laporan-${MONTH_NAMES[selectedMonthIndex]}-${selectedYear}.pdf`, image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2 }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' } }; window.html2pdf().set(opt).from(element).save(); };
+  const handleDownloadPDF = () => { const element = reportContentRef.current; if (!element || !window.html2pdf) { alert("Library PDF sedang dimuat atau tidak tersedia. Coba print biasa."); return; } const opt = { margin: 10, filename: `Laporan-${MONTH_NAMES[selectedMonthIndex]}-${selectedYear}.pdf`, image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2 }, jsPDF: { unit:'mm', format:'a4', orientation:'portrait' },
+      pagebreak: { mode:['css','legacy'] } }; window.html2pdf().set(opt).from(element).save(); };
 
   // --- ACTIONS HELPERS ---
   const openEditRoom = (room) => { setRoomFormData(room); setEditingId(room.id); setShowRoomForm(true); };
@@ -766,8 +767,11 @@ export default function App() {
                                         <button onClick={handleDownloadPDF} className="bg-slate-800 text-white px-5 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-slate-900 transition-all shadow-lg"><Download size={18} /> PDF</button>
                                     </div>
                                 </div>
-                                <div className="w-full md:w-[210mm] mx-auto bg-white shadow-2xl p-0 md:min-h-[297mm] print:w-full print:shadow-none">
-                                    <div ref={reportContentRef} className="p-10 md:p-12 relative">
+                                
+                                <div className="w-full md:w-[210mm] mx-auto bg-white shadow-2xl md:min-h-[297mm] print:w-[210mm] print:min-h-[297mm] print:shadow-none print:border-none">
+
+                                    <div ref={reportContentRef} className="p-4 md:p-10 print:p-6 p-10 md:p-12 relative">
+
                                         <div className="flex justify-between items-end border-b-4 border-slate-800 pb-6 mb-8">
                                             <div><h1 className="text-3xl font-black text-slate-800 tracking-tight uppercase">Laporan Laba Rugi</h1><p className="text-slate-500 font-medium">Pro-Kos Management System</p></div>
                                             <div className="text-right"><p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Periode</p><h2 className="text-xl font-bold text-indigo-600 bg-indigo-50 px-3 py-1 rounded-lg border border-indigo-100">{MONTH_NAMES[selectedMonthIndex]} {selectedYear}</h2></div>
