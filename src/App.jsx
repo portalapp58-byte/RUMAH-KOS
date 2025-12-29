@@ -547,14 +547,14 @@ export default function App() {
 
         {/* --- MOBILE HEADER --- */}
         <div className="md:hidden bg-white p-4 flex justify-between items-center shadow-sm sticky top-0 z-30">
-            <div className="flex items-center gap-2"><div className="bg-indigo-600 p-2 rounded-lg text-white"><Home size={20}/></div><span className="font-bold text-lg text-slate-800">Pro-Kos</span></div>
+            <div className="flex items-center gap-2"><div className="bg-indigo-600 p-2 rounded-lg text-white"><Home size={20}/></div><span className="font-bold text-lg text-slate-800">CBR-Kos</span></div>
             <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-2 text-slate-600 bg-slate-100 rounded-lg"><Menu size={24} /></button>
         </div>
 
         {/* --- SIDEBAR --- */}
         <aside className={`fixed inset-y-0 left-0 z-40 w-72 bg-white border-r border-slate-200 transform ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 transition-transform duration-300 ease-in-out md:static md:h-screen print:hidden flex flex-col`}>
             <div className="p-8">
-                <div className="flex items-center gap-3 mb-10"><div className="bg-gradient-to-br from-indigo-600 to-violet-600 p-2.5 rounded-xl text-white shadow-lg shadow-indigo-200"><Home size={26} strokeWidth={2} /></div><div><h1 className="font-black text-2xl text-slate-800 tracking-tight leading-none">Pro-Kos</h1><p className="text-xs text-indigo-500 font-bold tracking-wider">PREMIUM STAY</p></div></div>
+                <div className="flex items-center gap-3 mb-10"><div className="bg-gradient-to-br from-indigo-600 to-violet-600 p-2.5 rounded-xl text-white shadow-lg shadow-indigo-200"><Home size={26} strokeWidth={2} /></div><div><h1 className="font-black text-2xl text-slate-800 tracking-tight leading-none">CBR-Kos</h1><p className="text-xs text-indigo-500 font-bold tracking-wider">Management By MFG</p></div></div>
                 <nav className="space-y-2">
                     {userRole === 'admin' ? (
                         <><div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 mt-2 px-4">Menu Utama</div><NavItem id="dashboard" icon={LayoutDashboard} label="Dashboard (Utama)" /><NavItem id="expenses" icon={Receipt} label="Pengeluaran" /><NavItem id="history" icon={History} label="Riwayat & Laporan" /><div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 mt-6 px-4">Sistem</div><NavItem id="settings" icon={Settings} label="Pengaturan" /></>
