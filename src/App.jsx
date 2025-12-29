@@ -44,7 +44,7 @@ const db = getFirestore(app);
 
 const getCollectionRef = (collName) => {
   return collection(db, collName);
-
+};
 // ============================================================================
 
 // Load html2pdf script dynamically
