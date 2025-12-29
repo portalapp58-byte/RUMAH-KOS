@@ -775,11 +775,39 @@ if (!isAppLoggedIn) {
                                             {depositStatus[`${selectedYear}-${selectedMonthIndex}`] && (<div className="absolute top-10 right-10 opacity-20 rotate-[-15deg] border-4 border-green-600 text-green-600 font-black text-2xl md:text-4xl px-4 md:px-6 py-2 rounded-xl uppercase">SUDAH DISETOR</div>)}
                                             
                                             {/* Financial Summary */}
-                                            <div className="grid grid-cols-3 gap-2 md:gap-4 mb-8">
-                                                <div className="bg-green-50 p-3 md:p-4 rounded-xl border border-green-100 text-center"><p className="text-[10px] md:text-xs font-bold text-green-600 uppercase mb-1">Total Pemasukan</p><p className="text-sm md:text-xl font-black text-green-700">{formatIDR(getMonthlyIncome(selectedMonthIndex, selectedYear))}</p></div>
-                                                <div className="bg-red-50 p-3 md:p-4 rounded-xl border border-red-100 text-center"><p className="text-[10px] md:text-xs font-bold text-red-600 uppercase mb-1">Total Pengeluaran</p><p className="text-sm md:text-xl font-black text-red-700">{formatIDR(getMonthlyExpense(selectedMonthIndex, selectedYear))}</p></div>
-                                                <div className="bg-slate-800 p-3 md:p-4 rounded-xl border border-slate-700 text-center text-white"><p className="text-[10px] md:text-xs font-bold text-slate-400 uppercase mb-1">Laba Bersih</p><p className="text-lg md:text-2xl font-black">{formatIDR(getMonthlyIncome(selectedMonthIndex, selectedYear) - getMonthlyExpense(selectedMonthIndex, selectedYear))}</p></div>
-                                            </div>
+<div className="grid grid-cols-3 gap-2 md:gap-4 mb-8">
+
+  <div className="bg-green-50 p-3 md:p-4 rounded-xl border border-green-100 text-center">
+    <p className="text-[10px] md:text-xs font-bold text-green-600 uppercase mb-1">
+      Total Pemasukan
+    </p>
+    <p className="text-base sm:text-lg md:text-xl font-black text-green-700 break-words">
+      {formatIDR(getMonthlyIncome(selectedMonthIndex, selectedYear))}
+    </p>
+  </div>
+
+  <div className="bg-red-50 p-3 md:p-4 rounded-xl border border-red-100 text-center">
+    <p className="text-[10px] md:text-xs font-bold text-red-600 uppercase mb-1">
+      Total Pengeluaran
+    </p>
+    <p className="text-base sm:text-lg md:text-xl font-black text-red-700 break-words">
+      {formatIDR(getMonthlyExpense(selectedMonthIndex, selectedYear))}
+    </p>
+  </div>
+
+  <div className="bg-slate-800 p-3 md:p-4 rounded-xl border border-slate-700 text-center text-white">
+    <p className="text-[10px] md:text-xs font-bold text-slate-400 uppercase mb-1">
+      Laba Bersih
+    </p>
+    <p className="text-base sm:text-lg md:text-2xl font-black tracking-tight break-words">
+      {formatIDR(
+        getMonthlyIncome(selectedMonthIndex, selectedYear) -
+        getMonthlyExpense(selectedMonthIndex, selectedYear)
+      )}
+    </p>
+  </div>
+
+</div>
 
                                             {/* Two Column Grid for Income and Expense */}
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
