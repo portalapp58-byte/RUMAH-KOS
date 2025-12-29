@@ -591,10 +591,10 @@ if (!isAppLoggedIn) {
               Versi 1.0.0 — CBR-KOS Manager
           </p>
 
-          <p className="text-[11px] text-slate-500">
+          <p className="text-[11px] font-bold text-slate-500">
               Dikembangkan oleh Malang Florist Group
           </p>
-          
+
         </div>
         </div>
       </div>
