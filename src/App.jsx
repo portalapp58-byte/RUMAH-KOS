@@ -158,7 +158,7 @@ export default function App() {
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false); 
-  const [refreshTrigger, setRefreshTrigger] = useState(0); // STATE BARU UNTUK REFRESH DATA
+  const [refreshTrigger, setRefreshTrigger] = useState(0); 
 
   // UI States
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
@@ -172,6 +172,10 @@ export default function App() {
   const [showResidentDetail, setShowResidentDetail] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
+  
+  // Custom Confirmation Modal State (Pengganti confirm() bawaan)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null); // { id: '...', type: 'expense' | 'other' }
   
   // Expense Modal State & Filters
   const [showExpenseModal, setShowExpenseModal] = useState(false);
@@ -210,7 +214,6 @@ export default function App() {
     loadHtml2Pdf();
     
     const initAuth = async () => {
-      // ⚠️ [PENTING] Ganti logika ini di app Anda dengan auth biasa
       if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
         await signInWithCustomToken(auth, __initial_auth_token);
       } else {
@@ -232,18 +235,14 @@ export default function App() {
     }, 3000);
   };
 
-  // --- DATA FETCHING (DIPERBARUI UNTUK MENANGANI REFRESH TRIGGER) ---
+  // --- DATA FETCHING ---
   useEffect(() => {
     if (!user) return;
-    
-    // Set loading true saat refresh ditekan
     setLoading(true);
 
-    // Fetch Rooms
     const roomsRef = getCollectionRef('rooms');
     const unsubRooms = onSnapshot(roomsRef, (snapshot) => {
       if (snapshot.empty) {
-        // Initial Seed (Hanya untuk demo, bisa dihapus di production)
         const initialRooms = Array.from({ length: 20 }, (_, i) => {
           const num = i + 1;
           const isFloor1 = num <= 10;
@@ -255,13 +254,7 @@ export default function App() {
             floor: isFloor1 ? '1' : '2',
             bathroom: isFloor1 ? 'Dalam' : 'Luar',
             desc: isFloor1 ? 'Lantai Bawah' : 'Lantai Atas',
-            resident: '', 
-            address: '', 
-            entryDate: '',
-            nextPaymentDate: '',
-            ktpPhoto: null,
-            status: 'Available',
-            debt: 0
+            resident: '', address: '', entryDate: '', nextPaymentDate: '', ktpPhoto: null, status: 'Available', debt: 0
           };
         });
         initialRooms.forEach(r => addDoc(roomsRef, r));
@@ -270,10 +263,9 @@ export default function App() {
         roomList.sort((a, b) => a.id - b.id);
         setRooms(roomList);
       }
-      setLoading(false); // Matikan loading setelah data masuk
+      setLoading(false);
     }, (err) => console.error("Err Rooms:", err));
 
-    // Fetch Payments
     const paymentsRef = getCollectionRef('payments');
     const qPayments = query(paymentsRef);
     const unsubPayments = onSnapshot(qPayments, (snapshot) => {
@@ -282,16 +274,14 @@ export default function App() {
       setPayments(payList);
     }, (err) => console.error("Err Payments:", err));
 
-    // Fetch Expenses
     const expensesRef = getCollectionRef('expenses');
     const qExpenses = query(expensesRef);
     const unsubExpenses = onSnapshot(qExpenses, (snapshot) => {
       const expList = snapshot.docs.map(doc => ({ ...doc.data(), docId: doc.id }));
-      expList.sort((a, b) => b.id - a.id); // Desc
+      expList.sort((a, b) => b.id - a.id);
       setExpenses(expList);
     }, (err) => console.error("Err Expenses:", err));
 
-    // Fetch Settings
     const settingsRef = getCollectionRef('settings');
     const unsubSettings = onSnapshot(settingsRef, (snapshot) => {
       snapshot.forEach(doc => {
@@ -305,12 +295,9 @@ export default function App() {
     });
 
     return () => {
-      unsubRooms();
-      unsubPayments();
-      unsubExpenses();
-      unsubSettings();
+      unsubRooms(); unsubPayments(); unsubExpenses(); unsubSettings();
     };
-  }, [user, refreshTrigger]); // Dependency ditambahkan refreshTrigger agar ulang fetch saat berubah
+  }, [user, refreshTrigger]);
 
   // --- LOGIC AUTH & CORE ---
   const handleLogin = () => {
@@ -336,19 +323,12 @@ export default function App() {
 
   const handleSoftRefresh = () => {
       setLoading(true);
-      // Ubah angka trigger untuk memicu useEffect berjalan ulang
       setRefreshTrigger(prev => prev + 1);
-      
-      // Tampilkan toast agar user tahu sedang refresh
       showToast("Menyinkronkan data terbaru...", "success");
-      
-      // Safety timeout jika koneksi sangat cepat
-      setTimeout(() => {
-          setLoading(false);
-      }, 1000);
+      setTimeout(() => { setLoading(false); }, 1000);
   };
 
-  // --- LOGIC NEW FEATURE: EXPENSES (EDIT & ADD) ---
+  // --- LOGIC EXPENSES (EDIT, ADD, DELETE) ---
   const handleSaveExpense = async () => {
     if (!expenseFormData.description || !expenseFormData.amount || !expenseFormData.date || !user) {
         showToast("Mohon lengkapi data pengeluaran", "error");
@@ -356,7 +336,6 @@ export default function App() {
     }
     try {
         if (editingExpenseId) {
-            // Logic Update / Edit
             await updateDoc(doc(db, getCollectionRef('expenses').path, editingExpenseId), {
                 description: expenseFormData.description,
                 amount: parseInt(String(expenseFormData.amount)),
@@ -366,7 +345,6 @@ export default function App() {
             });
             showToast("Pengeluaran berhasil diperbarui!");
         } else {
-            // Logic Add New
             await addDoc(getCollectionRef('expenses'), {
                 id: Date.now(),
                 description: expenseFormData.description,
@@ -377,7 +355,6 @@ export default function App() {
             });
             showToast("Pengeluaran berhasil dicatat!");
         }
-        
         setShowExpenseModal(false);
         setExpenseFormData({ description: '', amount: 0, date: '', category: 'Operasional' });
         setEditingExpenseId(null);
@@ -397,13 +374,26 @@ export default function App() {
       setShowExpenseModal(true);
   };
 
-  const handleDeleteExpense = async (docId) => {
-      if(!confirm("Hapus data pengeluaran ini?")) return;
+  // Trigger Delete Confirmation Modal
+  const requestDeleteExpense = (docId) => {
+      setDeleteTarget({ id: docId, type: 'expense' });
+      setShowDeleteConfirm(true);
+  };
+
+  // Execute Delete after Confirmation
+  const executeDelete = async () => {
+      if (!deleteTarget) return;
+
       try {
-          await deleteDoc(doc(db, getCollectionRef('expenses').path, docId));
-          showToast("Data dihapus");
+          if (deleteTarget.type === 'expense') {
+             await deleteDoc(doc(db, getCollectionRef('expenses').path, deleteTarget.id));
+             showToast("Data pengeluaran berhasil dihapus");
+          }
       } catch (e) {
-          showToast("Gagal hapus", "error");
+          showToast("Gagal menghapus data", "error");
+      } finally {
+          setShowDeleteConfirm(false);
+          setDeleteTarget(null);
       }
   };
 
@@ -422,7 +412,6 @@ export default function App() {
     }).reduce((acc, curr) => acc + curr.amount, 0);
   };
 
-  // Get Expenses for Filtered View (Expenses Tab)
   const getExpensesForView = () => {
       return expenses.filter(e => {
           const d = new Date(e.date);
@@ -456,99 +445,25 @@ export default function App() {
   
   const handleConfirmPayment = async () => {
     if (!user || isSubmitting) return; 
-    
     const preview = calculatePaymentPreview();
-    if (!preview.isValid) {
-        showToast("Nominal pembayaran minimal 1 bulan sewa.", "error");
-        return;
-    }
-
+    if (!preview.isValid) { showToast("Nominal pembayaran minimal 1 bulan sewa.", "error"); return; }
     setIsSubmitting(true); 
-
     try {
-      const today = new Date();
-      today.setHours(0,0,0,0);
-      const newDue = new Date(preview.newDate);
-      newDue.setHours(0,0,0,0);
-
+      const today = new Date(); today.setHours(0,0,0,0);
+      const newDue = new Date(preview.newDate); newDue.setHours(0,0,0,0);
       const newStatus = newDue >= today ? 'Paid' : 'Unpaid';
-      
       const room = rooms.find(r => r.id === paymentFormData.roomId);
-      if(room) {
-          await updateDoc(doc(db, getCollectionRef('rooms').path, room.docId), {
-            status: newStatus, 
-            debt: 0, 
-            nextPaymentDate: preview.newDate 
-          });
-      }
-
-      const newPayment = {
-        id: Date.now(),
-        roomId: paymentFormData.roomNumber,
-        residentName: paymentFormData.resident,
-        amount: paymentFormData.amount,
-        date: paymentFormData.date,
-        type: `Sewa (${preview.months} Bulan)`, 
-        method: paymentFormData.method
-      };
+      if(room) { await updateDoc(doc(db, getCollectionRef('rooms').path, room.docId), { status: newStatus, debt: 0, nextPaymentDate: preview.newDate }); }
+      const newPayment = { id: Date.now(), roomId: paymentFormData.roomNumber, residentName: paymentFormData.resident, amount: paymentFormData.amount, date: paymentFormData.date, type: `Sewa (${preview.months} Bulan)`, method: paymentFormData.method };
       await addDoc(getCollectionRef('payments'), newPayment);
-
-      setShowPaymentModal(false);
-      setSelectedRoom(null); 
-      showToast("Pembayaran berhasil! Masa sewa diperpanjang.");
-    } catch (error) {
-      showToast("Gagal bayar: " + error.message, "error");
-    } finally {
-        setIsSubmitting(false); 
-    }
+      setShowPaymentModal(false); setSelectedRoom(null); showToast("Pembayaran berhasil! Masa sewa diperpanjang.");
+    } catch (error) { showToast("Gagal bayar: " + error.message, "error"); } finally { setIsSubmitting(false); }
   };
 
   const handleConfirmCheckout = async () => { if (!checkoutData || !user) return; try { await updateDoc(doc(db, getCollectionRef('rooms').path, checkoutData.docId), { resident: '', entryDate: '', nextPaymentDate: '', address: '', ktpPhoto: null, status: 'Available', debt: 0 }); const checkoutLog = { id: Date.now(), roomId: checkoutData.number, residentName: checkoutData.resident, amount: 0, date: new Date().toISOString().split('T')[0], type: 'Checkout / Keluar', method: '-' }; await addDoc(getCollectionRef('payments'), checkoutLog); setShowCheckoutModal(false); setCheckoutData(null); setSelectedRoom(null); showToast("Checkout berhasil diproses."); } catch (error) { showToast("Gagal checkout: " + error.message, "error"); } };
-  
-  const toggleDepositStatus = async () => { 
-      if (!user) return; 
-      const key = `${selectedYear}-${selectedMonthIndex}`; 
-      const newStatus = !depositStatus[key]; 
-      setDepositStatus({...depositStatus, [key]: newStatus}); 
-      try { 
-          const settingsRef = getCollectionRef('settings'); 
-          const snapshot = await getDocs(settingsRef); 
-          let docId = ''; 
-          snapshot.forEach(d => { if(d.id === 'deposits' || d.data().type === 'deposits') docId = d.id; }); 
-          
-          if (docId) { 
-              await updateDoc(doc(db, settingsRef.path, docId), { [key]: newStatus }); 
-          } else { 
-              await setDoc(doc(db, settingsRef.path, 'deposits'), { [key]: newStatus, type: 'deposits' }); 
-          } 
-          showToast("Status setor diperbarui!"); 
-      } catch (e) { 
-          console.error(e); 
-          showToast("Gagal simpan status", "error"); 
-      } 
-  };
-
-  const handleSaveSettings = async () => { 
-      if (!user) return; 
-      try { 
-          const settingsRef = getCollectionRef('settings'); 
-          const snapshot = await getDocs(settingsRef); 
-          let docId = ''; 
-          snapshot.forEach(d => { if(d.id === 'access_codes' || d.data().type === 'access_codes') docId = d.id; }); 
-          
-          if (docId) { 
-              await updateDoc(doc(db, settingsRef.path, docId), config); 
-          } else { 
-              await setDoc(doc(db, settingsRef.path, 'access_codes'), { ...config, type: 'access_codes' }); 
-          } 
-          showToast("Kode akses disimpan!"); 
-      } catch (err) { 
-          showToast("Gagal simpan", "error"); 
-      } 
-  };
-
-  const handleDownloadPDF = () => { const element = reportContentRef.current; if (!element || !window.html2pdf) { alert("Library PDF sedang dimuat atau tidak tersedia. Coba print biasa."); return; } const opt = { margin: 10, filename: `Laporan-${MONTH_NAMES[selectedMonthIndex]}-${selectedYear}.pdf`, image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2 }, jsPDF: { unit:'mm', format:'a4', orientation:'portrait' },
-      pagebreak: { mode:['css','legacy'] } }; window.html2pdf().set(opt).from(element).save(); };
+  const toggleDepositStatus = async () => { if (!user) return; const key = `${selectedYear}-${selectedMonthIndex}`; const newStatus = !depositStatus[key]; setDepositStatus({...depositStatus, [key]: newStatus}); try { const settingsRef = getCollectionRef('settings'); const snapshot = await getDocs(settingsRef); let docId = ''; snapshot.forEach(d => { if(d.id === 'deposits' || d.data().type === 'deposits') docId = d.id; }); if (docId) { await updateDoc(doc(db, settingsRef.path, docId), { [key]: newStatus }); } else { await setDoc(doc(db, settingsRef.path, 'deposits'), { [key]: newStatus, type: 'deposits' }); } showToast("Status setor diperbarui!"); } catch (e) { console.error(e); showToast("Gagal simpan status", "error"); } };
+  const handleSaveSettings = async () => { if (!user) return; try { const settingsRef = getCollectionRef('settings'); const snapshot = await getDocs(settingsRef); let docId = ''; snapshot.forEach(d => { if(d.id === 'access_codes' || d.data().type === 'access_codes') docId = d.id; }); if (docId) { await updateDoc(doc(db, settingsRef.path, docId), config); } else { await setDoc(doc(db, settingsRef.path, 'access_codes'), { ...config, type: 'access_codes' }); } showToast("Kode akses disimpan!"); } catch (err) { showToast("Gagal simpan", "error"); } };
+  const handleDownloadPDF = () => { const element = reportContentRef.current; if (!element || !window.html2pdf) { alert("Library PDF sedang dimuat atau tidak tersedia. Coba print biasa."); return; } const opt = { margin: 10, filename: `Laporan-${MONTH_NAMES[selectedMonthIndex]}-${selectedYear}.pdf`, image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2 }, jsPDF: { unit:'mm', format:'a4', orientation:'portrait' }, pagebreak: { mode:['css','legacy'] } }; window.html2pdf().set(opt).from(element).save(); };
 
   // --- ACTIONS HELPERS ---
   const openEditRoom = (room) => { setRoomFormData(room); setEditingId(room.id); setShowRoomForm(true); };
@@ -576,71 +491,27 @@ export default function App() {
 if (!isAppLoggedIn) {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center p-6">
-
       {toast.show && (
         <div className="fixed top-10 left-1/2 transform -translate-x-1/2 bg-red-600 text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-2 z-[100] animate-in slide-in-from-top-5">
           <AlertCircle size={20} />
           <span className="font-bold">{toast.message}</span>
         </div>
       )}
-
       <div className="max-w-md w-full bg-white/80 backdrop-blur-xl rounded-3xl shadow-2xl p-8 border border-white">
-
         <div className="text-center mb-10">
           <div className="bg-gradient-to-tr from-indigo-600 to-violet-600 w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-6 text-white shadow-xl shadow-indigo-200 rotate-3">
             <Home size={40} strokeWidth={1.5} />
           </div>
-
-          <h1 className="text-3xl font-black text-slate-800 tracking-tight">
-            CBR-KOS Manager
-          </h1>
-
-          <p className="text-slate-400 font-medium">
-            System By Malang Florist Group
-          </p>
+          <h1 className="text-3xl font-black text-slate-800 tracking-tight">CBR-KOS Manager</h1>
+          <p className="text-slate-400 font-medium">System By Malang Florist Group</p>
         </div>
-
-        {/* FORM LOGIN */}
         <div className="space-y-6">
-
           <div className="relative group">
-            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-              <Lock size={20} className="text-indigo-400 group-focus-within:text-indigo-600 transition-colors" />
-            </div>
-
-            <input
-              type="password"
-              placeholder="Masukkan Kode Akses"
-              className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl
-                          focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 outline-none
-                          transition-all font-bold text-slate-700 placeholder:font-normal"
-              value={loginCode}
-              onChange={(e) => setLoginCode(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
-            />
+            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Lock size={20} className="text-indigo-400 group-focus-within:text-indigo-600 transition-colors" /></div>
+            <input type="password" placeholder="Masukkan Kode Akses" className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 outline-none transition-all font-bold text-slate-700 placeholder:font-normal" value={loginCode} onChange={(e) => setLoginCode(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleLogin()} />
           </div>
-
-          <button
-            onClick={handleLogin}
-            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4
-                        rounded-2xl shadow-xl shadow-indigo-200 active:scale-95 transition-all
-                        flex items-center justify-center gap-2"
-          >
-            Masuk Aplikasi <ChevronRight size={20} />
-          </button>
-
-          {/* 👇 versi + credit */}
-          <div className="text-center space-y-0.5">
-
-          <p className="text-xs text-slate-400">
-              Versi 7.5.2 — CBR-KOS Manager
-          </p>
-
-          <p className="text-[11px] font-bold text-slate-500">
-              Dikembangkan oleh Malang Florist Group
-          </p>
-
-        </div>
+          <button onClick={handleLogin} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-2xl shadow-xl shadow-indigo-200 active:scale-95 transition-all flex items-center justify-center gap-2">Masuk Aplikasi <ChevronRight size={20} /></button>
+          <div className="text-center space-y-0.5"><p className="text-xs text-slate-400">Versi 7.6.0 — CBR-KOS Manager</p><p className="text-[11px] font-bold text-slate-500">Dikembangkan oleh Malang Florist Group</p></div>
         </div>
       </div>
     </div>
@@ -659,8 +530,16 @@ if (!isAppLoggedIn) {
             <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-2 text-slate-600 bg-slate-100 rounded-lg"><Menu size={24} /></button>
         </div>
 
+        {/* --- SIDEBAR OVERLAY (Mobile) --- */}
+        {isMobileMenuOpen && (
+            <div 
+                className="fixed inset-0 bg-black/50 z-30 md:hidden backdrop-blur-sm transition-opacity"
+                onClick={() => setIsMobileMenuOpen(false)}
+            />
+        )}
+
         {/* --- SIDEBAR --- */}
-        <aside className={`fixed inset-y-0 left-0 z-40 w-72 bg-white border-r border-slate-200 transform ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 transition-transform duration-300 ease-in-out md:static md:h-screen print:hidden flex flex-col`}>
+        <aside className={`fixed inset-y-0 left-0 z-40 w-72 bg-white border-r border-slate-200 transform ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 transition-transform duration-300 ease-in-out md:static md:h-screen print:hidden flex flex-col shadow-2xl md:shadow-none`}>
             <div className="p-8">
                 <div className="flex items-center gap-3 mb-10"><div className="bg-gradient-to-br from-indigo-600 to-violet-600 p-2.5 rounded-xl text-white shadow-lg shadow-indigo-200"><Home size={26} strokeWidth={2} /></div><div><h1 className="font-black text-2xl text-slate-800 tracking-tight leading-none">CBR-Kos</h1><p className="text-xs text-indigo-500 font-bold tracking-wider">Management By MFG</p></div></div>
                 <nav className="space-y-2">
@@ -806,10 +685,10 @@ if (!isAppLoggedIn) {
                                                 </div>
                                                 <div className="flex items-center gap-3">
                                                     <span className="font-bold text-red-600">-{formatIDR(exp.amount)}</span>
-                                                    {/* TOMBOL EDIT & HAPUS ADA DISINI */}
+                                                    {/* TOMBOL EDIT & HAPUS (Dengan Modal Cantik) */}
                                                     <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
                                                         <button onClick={() => openEditExpense(exp)} className="p-1.5 text-slate-300 hover:text-amber-500 hover:bg-amber-50 rounded-lg"><Pencil size={16}/></button>
-                                                        <button onClick={() => handleDeleteExpense(exp.docId)} className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg"><Trash2 size={16}/></button>
+                                                        <button onClick={() => requestDeleteExpense(exp.docId)} className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg"><Trash2 size={16}/></button>
                                                     </div>
                                                 </div>
                                             </div>
@@ -826,7 +705,7 @@ if (!isAppLoggedIn) {
                     </div>
                 )}
 
-                {/* --- CONTENT: HISTORY & REPORTS (UPDATED) --- */}
+                {/* --- CONTENT: HISTORY & REPORTS (UPDATED for Fit to Screen) --- */}
                 {(activeTab === 'history' || activeTab === 'reports') && (
                     <div className="space-y-6">
                         {reportViewMode === 'grid' ? (
@@ -880,70 +759,79 @@ if (!isAppLoggedIn) {
                                     </div>
                                 </div>
                                 
-                                <div className="w-full md:w-[210mm] mx-auto bg-white shadow-2xl md:min-h-[297mm] print:w-[210mm] print:min-h-[297mm] print:shadow-none print:border-none">
+                                {/* UPDATE: Fit To Screen Logic 
+                                    - w-full: Agar di HP mengikuti lebar layar (responsive)
+                                    - md:w-[210mm]: Agar di PC tetap seukuran A4
+                                    - md:min-h-[297mm]: Tinggi A4
+                                */}
+                                <div className="w-full md:w-[210mm] mx-auto bg-white shadow-2xl md:min-h-[297mm] print:w-[210mm] print:min-h-[297mm] print:shadow-none print:border-none overflow-hidden rounded-xl md:rounded-none">
 
-                                    <div ref={reportContentRef} className="p-4 md:p-10 print:p-6 p-10 md:p-12 relative">
+                                    <div ref={reportContentRef} className="p-4 md:p-10 print:p-6 relative">
 
                                             <div className="flex justify-between items-end border-b-4 border-slate-800 pb-6 mb-8">
-                                                <div><h1 className="text-3xl font-black text-slate-800 tracking-tight uppercase">Laporan Management Kos</h1><p className="text-slate-500 font-medium">By MFG-System</p></div>
-                                                <div className="text-right"><p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Periode</p><h2 className="text-xl font-bold text-indigo-600 bg-indigo-50 px-3 py-1 rounded-lg border border-indigo-100">{MONTH_NAMES[selectedMonthIndex]} {selectedYear}</h2></div>
+                                                <div><h1 className="text-xl md:text-3xl font-black text-slate-800 tracking-tight uppercase">Laporan Management Kos</h1><p className="text-slate-500 font-medium text-xs md:text-base">By MFG-System</p></div>
+                                                <div className="text-right"><p className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Periode</p><h2 className="text-sm md:text-xl font-bold text-indigo-600 bg-indigo-50 px-3 py-1 rounded-lg border border-indigo-100">{MONTH_NAMES[selectedMonthIndex]} {selectedYear}</h2></div>
                                             </div>
-                                            {depositStatus[`${selectedYear}-${selectedMonthIndex}`] && (<div className="absolute top-10 right-10 opacity-20 rotate-[-15deg] border-4 border-green-600 text-green-600 font-black text-4xl px-6 py-2 rounded-xl uppercase">SUDAH DISETOR</div>)}
+                                            {depositStatus[`${selectedYear}-${selectedMonthIndex}`] && (<div className="absolute top-10 right-10 opacity-20 rotate-[-15deg] border-4 border-green-600 text-green-600 font-black text-2xl md:text-4xl px-4 md:px-6 py-2 rounded-xl uppercase">SUDAH DISETOR</div>)}
                                             
                                             {/* Financial Summary */}
-                                            <div className="grid grid-cols-3 gap-4 mb-8">
-                                                <div className="bg-green-50 p-4 rounded-xl border border-green-100 text-center"><p className="text-xs font-bold text-green-600 uppercase mb-1">Total Pemasukan</p><p className="text-xl font-black text-green-700">{formatIDR(getMonthlyIncome(selectedMonthIndex, selectedYear))}</p></div>
-                                                <div className="bg-red-50 p-4 rounded-xl border border-red-100 text-center"><p className="text-xs font-bold text-red-600 uppercase mb-1">Total Pengeluaran</p><p className="text-xl font-black text-red-700">{formatIDR(getMonthlyExpense(selectedMonthIndex, selectedYear))}</p></div>
-                                                <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 text-center text-white"><p className="text-xs font-bold text-slate-400 uppercase mb-1">Laba Bersih</p><p className="text-2xl font-black">{formatIDR(getMonthlyIncome(selectedMonthIndex, selectedYear) - getMonthlyExpense(selectedMonthIndex, selectedYear))}</p></div>
+                                            <div className="grid grid-cols-3 gap-2 md:gap-4 mb-8">
+                                                <div className="bg-green-50 p-3 md:p-4 rounded-xl border border-green-100 text-center"><p className="text-[10px] md:text-xs font-bold text-green-600 uppercase mb-1">Total Pemasukan</p><p className="text-sm md:text-xl font-black text-green-700">{formatIDR(getMonthlyIncome(selectedMonthIndex, selectedYear))}</p></div>
+                                                <div className="bg-red-50 p-3 md:p-4 rounded-xl border border-red-100 text-center"><p className="text-[10px] md:text-xs font-bold text-red-600 uppercase mb-1">Total Pengeluaran</p><p className="text-sm md:text-xl font-black text-red-700">{formatIDR(getMonthlyExpense(selectedMonthIndex, selectedYear))}</p></div>
+                                                <div className="bg-slate-800 p-3 md:p-4 rounded-xl border border-slate-700 text-center text-white"><p className="text-[10px] md:text-xs font-bold text-slate-400 uppercase mb-1">Laba Bersih</p><p className="text-lg md:text-2xl font-black">{formatIDR(getMonthlyIncome(selectedMonthIndex, selectedYear) - getMonthlyExpense(selectedMonthIndex, selectedYear))}</p></div>
                                             </div>
 
                                             {/* Two Column Grid for Income and Expense */}
-                                            <div className="grid grid-cols-2 gap-6 mb-8">
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
                                                 {/* Left Column: Expenses */}
                                                 <div>
                                                     <h3 className="font-bold text-slate-800 mb-2 flex items-center gap-2 border-b pb-2"><TrendingDown size={18} className="text-red-600"/> Rincian Pengeluaran</h3>
-                                                    <table className="w-full text-[10px] text-left">
-                                                        <thead className="bg-slate-100 text-slate-600 font-bold uppercase"><tr><th className="px-2 py-1.5">Tanggal</th><th className="px-2 py-1.5">Keterangan</th><th className="px-2 py-1.5 text-right">Jumlah</th><th className="px-2 py-1.5 text-center print:hidden">Aksi</th></tr></thead>
-                                                        <tbody className="divide-y divide-slate-100">
-                                                            {getFilteredExpenses().length > 0 ? (getFilteredExpenses().map((exp) => (
-                                                                <tr key={exp.id} className="group hover:bg-slate-50">
-                                                                    <td className="px-2 py-1">{formatDateIndo(exp.date)}</td>
-                                                                    <td className="px-2 py-1">{exp.description} <span className="text-[9px] text-slate-400">({exp.category})</span></td>
-                                                                    <td className="px-2 py-1 text-right font-bold text-red-600">{formatIDR(exp.amount)}</td>
-                                                                    {/* TOMBOL EDIT/HAPUS DI REPORT (HIDDEN SAAT PRINT) */}
-                                                                    <td className="px-2 py-1 text-center print:hidden">
-                                                                        <div className="flex justify-center gap-1 opacity-0 group-hover:opacity-100">
-                                                                            <button onClick={() => openEditExpense(exp)} className="text-amber-500 hover:text-amber-700"><Pencil size={12}/></button>
-                                                                            <button onClick={() => handleDeleteExpense(exp.docId)} className="text-red-500 hover:text-red-700"><Trash2 size={12}/></button>
-                                                                        </div>
-                                                                    </td>
-                                                                </tr>
-                                                            ))) : (<tr><td colSpan={4} className="px-2 py-4 text-center text-slate-400 italic">Tidak ada pengeluaran.</td></tr>)}
-                                                        </tbody>
-                                                    </table>
+                                                    <div className="overflow-x-auto">
+                                                        <table className="w-full text-[10px] text-left">
+                                                            <thead className="bg-slate-100 text-slate-600 font-bold uppercase"><tr><th className="px-2 py-1.5">Tanggal</th><th className="px-2 py-1.5">Keterangan</th><th className="px-2 py-1.5 text-right">Jumlah</th><th className="px-2 py-1.5 text-center print:hidden">Aksi</th></tr></thead>
+                                                            <tbody className="divide-y divide-slate-100">
+                                                                {getFilteredExpenses().length > 0 ? (getFilteredExpenses().map((exp) => (
+                                                                    <tr key={exp.id} className="group hover:bg-slate-50">
+                                                                        <td className="px-2 py-1">{formatDateIndo(exp.date)}</td>
+                                                                        <td className="px-2 py-1">{exp.description} <span className="text-[9px] text-slate-400">({exp.category})</span></td>
+                                                                        <td className="px-2 py-1 text-right font-bold text-red-600">{formatIDR(exp.amount)}</td>
+                                                                        {/* TOMBOL EDIT/HAPUS DI REPORT */}
+                                                                        <td className="px-2 py-1 text-center print:hidden">
+                                                                            <div className="flex justify-center gap-1 opacity-0 group-hover:opacity-100">
+                                                                                <button onClick={() => openEditExpense(exp)} className="text-amber-500 hover:text-amber-700"><Pencil size={12}/></button>
+                                                                                <button onClick={() => requestDeleteExpense(exp.docId)} className="text-red-500 hover:text-red-700"><Trash2 size={12}/></button>
+                                                                            </div>
+                                                                        </td>
+                                                                    </tr>
+                                                                ))) : (<tr><td colSpan={4} className="px-2 py-4 text-center text-slate-400 italic">Tidak ada pengeluaran.</td></tr>)}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
                                                 </div>
 
                                                 {/* Right Column: Income */}
                                                 <div>
                                                     <h3 className="font-bold text-slate-800 mb-2 flex items-center gap-2 border-b pb-2"><TrendingUp size={18} className="text-green-600"/> Rincian Pemasukan</h3>
-                                                    <table className="w-full text-[10px] text-left">
-                                                        <thead className="bg-slate-100 text-slate-600 font-bold uppercase"><tr><th className="px-2 py-1.5">Tanggal</th><th className="px-2 py-1.5">Sumber</th><th className="px-2 py-1.5 text-right">Jumlah</th></tr></thead>
-                                                        <tbody className="divide-y divide-slate-100">
-                                                            {getFilteredPayments().length > 0 ? (getFilteredPayments().map((pay) => (
-                                                                <tr key={pay.id}>
-                                                                    <td className="px-2 py-1">{formatDateIndo(pay.date)}</td>
-                                                                    <td className="px-2 py-1">{pay.roomId} - {pay.residentName}</td>
-                                                                    <td className="px-2 py-1 text-right font-bold">
-                                                                        {pay.amount === 0 ? (
-                                                                            <span className="text-red-500 italic text-[9px] uppercase font-bold">Penghuni Check Out</span>
-                                                                        ) : (
-                                                                            formatIDR(pay.amount)
-                                                                        )}
-                                                                    </td>
-                                                                </tr>
-                                                            ))) : (<tr><td colSpan={3} className="px-2 py-4 text-center text-slate-400 italic">Tidak ada pemasukan.</td></tr>)}
-                                                        </tbody>
-                                                    </table>
+                                                    <div className="overflow-x-auto">
+                                                        <table className="w-full text-[10px] text-left">
+                                                            <thead className="bg-slate-100 text-slate-600 font-bold uppercase"><tr><th className="px-2 py-1.5">Tanggal</th><th className="px-2 py-1.5">Sumber</th><th className="px-2 py-1.5 text-right">Jumlah</th></tr></thead>
+                                                            <tbody className="divide-y divide-slate-100">
+                                                                {getFilteredPayments().length > 0 ? (getFilteredPayments().map((pay) => (
+                                                                    <tr key={pay.id}>
+                                                                        <td className="px-2 py-1">{formatDateIndo(pay.date)}</td>
+                                                                        <td className="px-2 py-1">{pay.roomId} - {pay.residentName}</td>
+                                                                        <td className="px-2 py-1 text-right font-bold">
+                                                                            {pay.amount === 0 ? (
+                                                                                <span className="text-red-500 italic text-[9px] uppercase font-bold">Penghuni Check Out</span>
+                                                                            ) : (
+                                                                                formatIDR(pay.amount)
+                                                                            )}
+                                                                        </td>
+                                                                    </tr>
+                                                                ))) : (<tr><td colSpan={3} className="px-2 py-4 text-center text-slate-400 italic">Tidak ada pemasukan.</td></tr>)}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
                                                 </div>
                                             </div>
 
@@ -972,7 +860,22 @@ if (!isAppLoggedIn) {
 
         {/* --- MODALS (Overlays) --- */}
 
-        {/* 1. Modal Expense (EDITED to handle Edit Mode) */}
+        {/* 1. NEW DELETE CONFIRMATION MODAL (Popup Cantik) */}
+        {showDeleteConfirm && (
+             <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[80] flex items-center justify-center p-4">
+                 <div className="bg-white rounded-3xl w-full max-w-sm p-8 shadow-2xl text-center animate-in zoom-in-95 duration-200">
+                     <div className="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4"><Trash2 size={32}/></div>
+                     <h3 className="font-bold text-xl text-slate-800 mb-2">Hapus Data?</h3>
+                     <p className="text-slate-500 text-sm mb-6">Data yang dihapus tidak dapat dikembalikan. Anda yakin?</p>
+                     <div className="flex gap-3 justify-center">
+                         <button onClick={() => setShowDeleteConfirm(false)} className="px-5 py-2.5 border rounded-xl font-bold text-slate-500 hover:bg-slate-50">Batal</button>
+                         <button onClick={executeDelete} className="px-5 py-2.5 bg-red-500 text-white rounded-xl font-bold hover:bg-red-600 shadow-lg shadow-red-200">Ya, Hapus</button>
+                     </div>
+                 </div>
+             </div>
+        )}
+
+        {/* 2. Modal Expense */}
         {showExpenseModal && (
             <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
                 <div className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl animate-in zoom-in-95 duration-200">
@@ -995,7 +898,7 @@ if (!isAppLoggedIn) {
             </div>
         )}
 
-        {/* Existing Modals (Same as before) */}
+        {/* Existing Modals */}
         {selectedRoom && (
              <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                  <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
@@ -1117,7 +1020,7 @@ if (!isAppLoggedIn) {
             </div>
         )}
 
-        {/* --- FLOATING REFRESH BUTTON (UPDATED: SOFT REFRESH) --- */}
+        {/* --- FLOATING REFRESH BUTTON --- */}
         {(userRole === 'owner' || activeTab === 'monitor') && (
             <button 
                 onClick={handleSoftRefresh} 
