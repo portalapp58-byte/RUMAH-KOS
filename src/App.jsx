@@ -6,7 +6,7 @@ import {
   CalendarCheck, Wallet, CheckCircle2, Calendar, ArrowLeft, 
   Stamp, Clock, Save, Lock, TrendingUp, Calculator, UserCog, Download,
   Menu, Search, Filter, MoreHorizontal, UserCheck, MapPin, Check, ListChecks, 
-  AlertTriangle, TrendingDown, Receipt, DollarSign, ChevronLeft
+  AlertTriangle, TrendingDown, Receipt, DollarSign, ChevronLeft, Trash2
 } from 'lucide-react';
 import { initializeApp } from "firebase/app";
 import { 
@@ -18,9 +18,9 @@ import {
   setDoc, 
   updateDoc, 
   getDoc,
-  onSnapshot,
-  query,
-  orderBy,
+  onSnapshot, 
+  query, 
+  orderBy, 
   deleteDoc
 } from "firebase/firestore";
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "firebase/auth";
@@ -36,7 +36,7 @@ const firebaseConfig = {
   messagingSenderId: "661524860034",
   appId: "1:661524860034:web:277dbf69b555b0a688389b"
 };
-  
+   
 // Inisialisasi Firebase
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -88,7 +88,7 @@ const getDaysOverdue = (dueDate) => {
   const due = new Date(dueDate);
   today.setHours(0, 0, 0, 0);
   due.setHours(0, 0, 0, 0);
-   
+    
   const diffTime = today.getTime() - due.getTime();
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
   return diffDays; 
@@ -104,7 +104,7 @@ const getDebtCalculation = (room) => {
   
   const dueDate = new Date(room.nextPaymentDate);
   dueDate.setHours(0,0,0,0);
-   
+    
   if (dueDate >= today) return { months: 0, totalDebt: 0 };
 
   let diffMonths = (today.getFullYear() - dueDate.getFullYear()) * 12 + (today.getMonth() - dueDate.getMonth());
@@ -174,6 +174,7 @@ export default function App() {
   
   // Expense Modal State & Filters
   const [showExpenseModal, setShowExpenseModal] = useState(false);
+  const [editingExpenseId, setEditingExpenseId] = useState(null); // State baru untuk ID edit pengeluaran
   const [expenseFormData, setExpenseFormData] = useState({ description: '', amount: 0, date: '', category: 'Operasional' });
   
   // Expenses Filter State (Arsip Pengeluaran)
@@ -329,27 +330,53 @@ export default function App() {
     setActiveTab('dashboard');
   };
 
-  // --- LOGIC NEW FEATURE: EXPENSES ---
+  // --- LOGIC NEW FEATURE: EXPENSES (EDIT & ADD) ---
   const handleSaveExpense = async () => {
     if (!expenseFormData.description || !expenseFormData.amount || !expenseFormData.date || !user) {
         showToast("Mohon lengkapi data pengeluaran", "error");
         return;
     }
     try {
-        await addDoc(getCollectionRef('expenses'), {
-            id: Date.now(),
-            description: expenseFormData.description,
-            amount: parseInt(String(expenseFormData.amount)),
-            date: expenseFormData.date,
-            category: expenseFormData.category,
-            timestamp: new Date().toISOString()
-        });
+        if (editingExpenseId) {
+            // Logic Update / Edit
+            await updateDoc(doc(db, getCollectionRef('expenses').path, editingExpenseId), {
+                description: expenseFormData.description,
+                amount: parseInt(String(expenseFormData.amount)),
+                date: expenseFormData.date,
+                category: expenseFormData.category,
+                lastUpdated: new Date().toISOString()
+            });
+            showToast("Pengeluaran berhasil diperbarui!");
+        } else {
+            // Logic Add New
+            await addDoc(getCollectionRef('expenses'), {
+                id: Date.now(),
+                description: expenseFormData.description,
+                amount: parseInt(String(expenseFormData.amount)),
+                date: expenseFormData.date,
+                category: expenseFormData.category,
+                timestamp: new Date().toISOString()
+            });
+            showToast("Pengeluaran berhasil dicatat!");
+        }
+        
         setShowExpenseModal(false);
         setExpenseFormData({ description: '', amount: 0, date: '', category: 'Operasional' });
-        showToast("Pengeluaran berhasil dicatat!");
+        setEditingExpenseId(null);
     } catch (e) {
         showToast("Gagal simpan: " + e.message, "error");
     }
+  };
+
+  const openEditExpense = (exp) => {
+      setExpenseFormData({
+          description: exp.description,
+          amount: exp.amount,
+          date: exp.date,
+          category: exp.category
+      });
+      setEditingExpenseId(exp.docId);
+      setShowExpenseModal(true);
   };
 
   const handleDeleteExpense = async (docId) => {
@@ -567,8 +594,8 @@ if (!isAppLoggedIn) {
               type="password"
               placeholder="Masukkan Kode Akses"
               className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl
-                         focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 outline-none
-                         transition-all font-bold text-slate-700 placeholder:font-normal"
+                          focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 outline-none
+                          transition-all font-bold text-slate-700 placeholder:font-normal"
               value={loginCode}
               onChange={(e) => setLoginCode(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
@@ -578,8 +605,8 @@ if (!isAppLoggedIn) {
           <button
             onClick={handleLogin}
             className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4
-                       rounded-2xl shadow-xl shadow-indigo-200 active:scale-95 transition-all
-                       flex items-center justify-center gap-2"
+                        rounded-2xl shadow-xl shadow-indigo-200 active:scale-95 transition-all
+                        flex items-center justify-center gap-2"
           >
             Masuk Aplikasi <ChevronRight size={20} />
           </button>
@@ -588,7 +615,7 @@ if (!isAppLoggedIn) {
           <div className="text-center space-y-0.5">
 
           <p className="text-xs text-slate-400">
-              Versi 1.0.0 — CBR-KOS Manager
+              Versi 7.5.0 — CBR-KOS Manager
           </p>
 
           <p className="text-[11px] font-bold text-slate-500">
@@ -722,7 +749,7 @@ if (!isAppLoggedIn) {
                                         <option key={i} value={i}>{m}</option>
                                     ))}
                                 </select>
-                                <button onClick={() => setShowExpenseModal(true)} className="bg-red-600 text-white px-5 py-2 rounded-xl font-bold shadow-lg hover:bg-red-700 flex items-center gap-2">
+                                <button onClick={() => {setEditingExpenseId(null); setExpenseFormData({description:'', amount:0, date:'', category:'Operasional'}); setShowExpenseModal(true);}} className="bg-red-600 text-white px-5 py-2 rounded-xl font-bold shadow-lg hover:bg-red-700 flex items-center gap-2">
                                     <Plus size={20} /> <span className="hidden md:inline">Catat Baru</span>
                                 </button>
                             </div>
@@ -742,6 +769,44 @@ if (!isAppLoggedIn) {
                                 <div className="absolute -right-6 -bottom-6 text-red-50 opacity-50"><Receipt size={140} /></div>
                             </div>
                             
+                            {/* Filtered List */}
+                            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm h-full max-h-[500px] overflow-y-auto">
+                                <h4 className="font-bold text-lg text-slate-800 mb-4 sticky top-0 bg-white pb-2 border-b border-slate-100 flex justify-between items-center">
+                                    <span>Rincian Pengeluaran</span>
+                                    <span className="text-xs bg-slate-100 text-slate-500 px-2 py-1 rounded-lg">{getExpensesForView().length} Data</span>
+                                </h4>
+                                <div className="space-y-3">
+                                    {getExpensesForView().length > 0 ? (
+                                        getExpensesForView().map(exp => (
+                                            <div key={exp.docId} className="flex justify-between items-center p-3 hover:bg-slate-50 rounded-xl border border-slate-100 transition-colors group">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="bg-slate-100 p-2 rounded-lg text-slate-500"><Receipt size={20}/></div>
+                                                    <div>
+                                                        <p className="font-bold text-slate-800">{exp.description}</p>
+                                                        <p className="text-xs text-slate-500">{formatDateIndo(exp.date)} • {exp.category}</p>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-3">
+                                                    <span className="font-bold text-red-600">-{formatIDR(exp.amount)}</span>
+                                                    {/* TOMBOL EDIT & HAPUS ADA DISINI */}
+                                                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                                                        <button onClick={() => openEditExpense(exp)} className="p-1.5 text-slate-300 hover:text-amber-500 hover:bg-amber-50 rounded-lg"><Pencil size={16}/></button>
+                                                        <button onClick={() => handleDeleteExpense(exp.docId)} className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg"><Trash2 size={16}/></button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <div className="flex flex-col items-center justify-center py-10 text-slate-400">
+                                            <Receipt size={48} className="mb-2 opacity-20"/>
+                                            <p className="italic">Tidak ada data pengeluaran di bulan ini.</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* --- CONTENT: HISTORY & REPORTS (UPDATED) --- */}
                 {(activeTab === 'history' || activeTab === 'reports') && (
@@ -767,19 +832,19 @@ if (!isAppLoggedIn) {
                                         const isDeposited = depositStatus[`${selectedYear}-${index}`];
                                         return (
                                             <div key={month} onClick={() => { setSelectedMonthIndex(index); setReportViewMode('detail'); }} className={`group p-6 rounded-3xl border-2 transition-all cursor-pointer relative overflow-hidden ${isDeposited ? 'bg-emerald-50 border-emerald-200 hover:border-emerald-400' : 'bg-white border-slate-100 hover:border-indigo-300 shadow-sm hover:shadow-lg'}`}>
-                                                <div className="flex justify-between items-start mb-4 relative z-10"><span className="font-bold text-lg text-slate-700">{month}</span>{isDeposited ? <div className="bg-emerald-200 p-1.5 rounded-full text-emerald-700"><CheckCircle2 size={16} /></div> : <div className="bg-slate-100 p-1.5 rounded-full text-slate-400 group-hover:bg-indigo-100 group-hover:text-indigo-600 transition-colors"><ChevronRight size={16} /></div>}</div>
-                                                <div className="relative z-10 space-y-1">
-                                                    <div className="flex justify-between text-xs text-slate-500 font-bold"><span>Masuk</span><span className="text-green-600">{formatIDR(income)}</span></div>
-                                                    <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden"><div className="bg-green-500 h-full" style={{ width: '100%' }}></div></div>
-                                                    <div className="flex justify-between text-xs text-slate-500 font-bold mt-1"><span>Keluar</span><span className="text-red-500">{formatIDR(expense)}</span></div>
-                                                    <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden"><div className="bg-red-500 h-full" style={{ width: income > 0 ? `${Math.min((expense/income)*100, 100)}%` : '0%' }}></div></div>
-                                                    <div className="pt-2 border-t border-slate-100 mt-2">
-                                                        <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Bersih (Net)</p>
-                                                        <h4 className={`text-xl font-black ${net >= 0 ? 'text-slate-800' : 'text-red-600'}`}>{formatIDR(net)}</h4>
+                                                    <div className="flex justify-between items-start mb-4 relative z-10"><span className="font-bold text-lg text-slate-700">{month}</span>{isDeposited ? <div className="bg-emerald-200 p-1.5 rounded-full text-emerald-700"><CheckCircle2 size={16} /></div> : <div className="bg-slate-100 p-1.5 rounded-full text-slate-400 group-hover:bg-indigo-100 group-hover:text-indigo-600 transition-colors"><ChevronRight size={16} /></div>}</div>
+                                                    <div className="relative z-10 space-y-1">
+                                                        <div className="flex justify-between text-xs text-slate-500 font-bold"><span>Masuk</span><span className="text-green-600">{formatIDR(income)}</span></div>
+                                                        <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden"><div className="bg-green-500 h-full" style={{ width: '100%' }}></div></div>
+                                                        <div className="flex justify-between text-xs text-slate-500 font-bold mt-1"><span>Keluar</span><span className="text-red-500">{formatIDR(expense)}</span></div>
+                                                        <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden"><div className="bg-red-500 h-full" style={{ width: income > 0 ? `${Math.min((expense/income)*100, 100)}%` : '0%' }}></div></div>
+                                                        <div className="pt-2 border-t border-slate-100 mt-2">
+                                                            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Bersih (Net)</p>
+                                                            <h4 className={`text-xl font-black ${net >= 0 ? 'text-slate-800' : 'text-red-600'}`}>{formatIDR(net)}</h4>
+                                                        </div>
                                                     </div>
+                                                    {isDeposited && <div className="absolute -bottom-6 -right-6 text-emerald-100 rotate-12"><Stamp size={100} /></div>}
                                                 </div>
-                                                {isDeposited && <div className="absolute -bottom-6 -right-6 text-emerald-100 rotate-12"><Stamp size={100} /></div>}
-                                            </div>
                                         );
                                     })}
                                 </div>
@@ -801,58 +866,71 @@ if (!isAppLoggedIn) {
 
                                     <div ref={reportContentRef} className="p-4 md:p-10 print:p-6 p-10 md:p-12 relative">
 
-                                        <div className="flex justify-between items-end border-b-4 border-slate-800 pb-6 mb-8">
-                                            <div><h1 className="text-3xl font-black text-slate-800 tracking-tight uppercase">Laporan Management Kos</h1><p className="text-slate-500 font-medium">By MFG-System</p></div>
-                                            <div className="text-right"><p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Periode</p><h2 className="text-xl font-bold text-indigo-600 bg-indigo-50 px-3 py-1 rounded-lg border border-indigo-100">{MONTH_NAMES[selectedMonthIndex]} {selectedYear}</h2></div>
-                                        </div>
-                                        {depositStatus[`${selectedYear}-${selectedMonthIndex}`] && (<div className="absolute top-10 right-10 opacity-20 rotate-[-15deg] border-4 border-green-600 text-green-600 font-black text-4xl px-6 py-2 rounded-xl uppercase">SUDAH DISETOR</div>)}
-                                        
-                                        {/* Financial Summary */}
-                                        <div className="grid grid-cols-3 gap-4 mb-8">
-                                            <div className="bg-green-50 p-4 rounded-xl border border-green-100 text-center"><p className="text-xs font-bold text-green-600 uppercase mb-1">Total Pemasukan</p><p className="text-xl font-black text-green-700">{formatIDR(getMonthlyIncome(selectedMonthIndex, selectedYear))}</p></div>
-                                            <div className="bg-red-50 p-4 rounded-xl border border-red-100 text-center"><p className="text-xs font-bold text-red-600 uppercase mb-1">Total Pengeluaran</p><p className="text-xl font-black text-red-700">{formatIDR(getMonthlyExpense(selectedMonthIndex, selectedYear))}</p></div>
-                                            <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 text-center text-white"><p className="text-xs font-bold text-slate-400 uppercase mb-1">Laba Bersih</p><p className="text-2xl font-black">{formatIDR(getMonthlyIncome(selectedMonthIndex, selectedYear) - getMonthlyExpense(selectedMonthIndex, selectedYear))}</p></div>
-                                        </div>
-
-                                        {/* Two Column Grid for Income and Expense */}
-                                        <div className="grid grid-cols-2 gap-6 mb-8">
-                                            {/* Left Column: Expenses */}
-                                            <div>
-                                                <h3 className="font-bold text-slate-800 mb-2 flex items-center gap-2 border-b pb-2"><TrendingDown size={18} className="text-red-600"/> Rincian Pengeluaran</h3>
-                                                <table className="w-full text-[10px] text-left">
-                                                    <thead className="bg-slate-100 text-slate-600 font-bold uppercase"><tr><th className="px-2 py-1.5">Tanggal</th><th className="px-2 py-1.5">Keterangan</th><th className="px-2 py-1.5 text-right">Jumlah</th></tr></thead>
-                                                    <tbody className="divide-y divide-slate-100">
-                                                        {getFilteredExpenses().length > 0 ? (getFilteredExpenses().map((exp) => (<tr key={exp.id}><td className="px-2 py-1">{formatDateIndo(exp.date)}</td><td className="px-2 py-1">{exp.description} <span className="text-[9px] text-slate-400">({exp.category})</span></td><td className="px-2 py-1 text-right font-bold text-red-600">{formatIDR(exp.amount)}</td></tr>))) : (<tr><td colSpan={3} className="px-2 py-4 text-center text-slate-400 italic">Tidak ada pengeluaran.</td></tr>)}
-                                                    </tbody>
-                                                </table>
+                                            <div className="flex justify-between items-end border-b-4 border-slate-800 pb-6 mb-8">
+                                                <div><h1 className="text-3xl font-black text-slate-800 tracking-tight uppercase">Laporan Management Kos</h1><p className="text-slate-500 font-medium">By MFG-System</p></div>
+                                                <div className="text-right"><p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Periode</p><h2 className="text-xl font-bold text-indigo-600 bg-indigo-50 px-3 py-1 rounded-lg border border-indigo-100">{MONTH_NAMES[selectedMonthIndex]} {selectedYear}</h2></div>
+                                            </div>
+                                            {depositStatus[`${selectedYear}-${selectedMonthIndex}`] && (<div className="absolute top-10 right-10 opacity-20 rotate-[-15deg] border-4 border-green-600 text-green-600 font-black text-4xl px-6 py-2 rounded-xl uppercase">SUDAH DISETOR</div>)}
+                                            
+                                            {/* Financial Summary */}
+                                            <div className="grid grid-cols-3 gap-4 mb-8">
+                                                <div className="bg-green-50 p-4 rounded-xl border border-green-100 text-center"><p className="text-xs font-bold text-green-600 uppercase mb-1">Total Pemasukan</p><p className="text-xl font-black text-green-700">{formatIDR(getMonthlyIncome(selectedMonthIndex, selectedYear))}</p></div>
+                                                <div className="bg-red-50 p-4 rounded-xl border border-red-100 text-center"><p className="text-xs font-bold text-red-600 uppercase mb-1">Total Pengeluaran</p><p className="text-xl font-black text-red-700">{formatIDR(getMonthlyExpense(selectedMonthIndex, selectedYear))}</p></div>
+                                                <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 text-center text-white"><p className="text-xs font-bold text-slate-400 uppercase mb-1">Laba Bersih</p><p className="text-2xl font-black">{formatIDR(getMonthlyIncome(selectedMonthIndex, selectedYear) - getMonthlyExpense(selectedMonthIndex, selectedYear))}</p></div>
                                             </div>
 
-                                            {/* Right Column: Income */}
-                                            <div>
-                                                <h3 className="font-bold text-slate-800 mb-2 flex items-center gap-2 border-b pb-2"><TrendingUp size={18} className="text-green-600"/> Rincian Pemasukan</h3>
-                                                <table className="w-full text-[10px] text-left">
-                                                    <thead className="bg-slate-100 text-slate-600 font-bold uppercase"><tr><th className="px-2 py-1.5">Tanggal</th><th className="px-2 py-1.5">Sumber</th><th className="px-2 py-1.5 text-right">Jumlah</th></tr></thead>
-                                                    <tbody className="divide-y divide-slate-100">
-                                                        {getFilteredPayments().length > 0 ? (getFilteredPayments().map((pay) => (
-                                                            <tr key={pay.id}>
-                                                                <td className="px-2 py-1">{formatDateIndo(pay.date)}</td>
-                                                                <td className="px-2 py-1">{pay.roomId} - {pay.residentName}</td>
-                                                                <td className="px-2 py-1 text-right font-bold">
-                                                                    {pay.amount === 0 ? (
-                                                                        <span className="text-red-500 italic text-[9px] uppercase font-bold">Penghuni Check Out</span>
-                                                                    ) : (
-                                                                        formatIDR(pay.amount)
-                                                                    )}
-                                                                </td>
-                                                            </tr>
-                                                        ))) : (<tr><td colSpan={3} className="px-2 py-4 text-center text-slate-400 italic">Tidak ada pemasukan.</td></tr>)}
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        </div>
+                                            {/* Two Column Grid for Income and Expense */}
+                                            <div className="grid grid-cols-2 gap-6 mb-8">
+                                                {/* Left Column: Expenses */}
+                                                <div>
+                                                    <h3 className="font-bold text-slate-800 mb-2 flex items-center gap-2 border-b pb-2"><TrendingDown size={18} className="text-red-600"/> Rincian Pengeluaran</h3>
+                                                    <table className="w-full text-[10px] text-left">
+                                                        <thead className="bg-slate-100 text-slate-600 font-bold uppercase"><tr><th className="px-2 py-1.5">Tanggal</th><th className="px-2 py-1.5">Keterangan</th><th className="px-2 py-1.5 text-right">Jumlah</th><th className="px-2 py-1.5 text-center print:hidden">Aksi</th></tr></thead>
+                                                        <tbody className="divide-y divide-slate-100">
+                                                            {getFilteredExpenses().length > 0 ? (getFilteredExpenses().map((exp) => (
+                                                                <tr key={exp.id} className="group hover:bg-slate-50">
+                                                                    <td className="px-2 py-1">{formatDateIndo(exp.date)}</td>
+                                                                    <td className="px-2 py-1">{exp.description} <span className="text-[9px] text-slate-400">({exp.category})</span></td>
+                                                                    <td className="px-2 py-1 text-right font-bold text-red-600">{formatIDR(exp.amount)}</td>
+                                                                    {/* TOMBOL EDIT/HAPUS DI REPORT (HIDDEN SAAT PRINT) */}
+                                                                    <td className="px-2 py-1 text-center print:hidden">
+                                                                        <div className="flex justify-center gap-1 opacity-0 group-hover:opacity-100">
+                                                                            <button onClick={() => openEditExpense(exp)} className="text-amber-500 hover:text-amber-700"><Pencil size={12}/></button>
+                                                                            <button onClick={() => handleDeleteExpense(exp.docId)} className="text-red-500 hover:text-red-700"><Trash2 size={12}/></button>
+                                                                        </div>
+                                                                    </td>
+                                                                </tr>
+                                                            ))) : (<tr><td colSpan={4} className="px-2 py-4 text-center text-slate-400 italic">Tidak ada pengeluaran.</td></tr>)}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
 
-                                        <div className="flex justify-between px-10 mt-12 break-inside-avoid"><div className="text-center"><p className="text-xs font-bold text-slate-400 uppercase mb-16">Diserahkan Oleh</p><p className="font-bold text-slate-800 border-b border-slate-300 pb-2 px-8">Pengelola</p></div><div className="text-center"><p className="text-xs font-bold text-slate-400 uppercase mb-16">Diterima Oleh</p><p className="font-bold text-slate-800 border-b border-slate-300 pb-2 px-8">Owner</p></div></div>
-                                        <div className="mt-8 pt-4 border-t border-slate-100 text-center"><p className="text-[10px] text-slate-400">Dicetak otomatis pada {new Date().toLocaleString('id-ID')}</p></div>
+                                                {/* Right Column: Income */}
+                                                <div>
+                                                    <h3 className="font-bold text-slate-800 mb-2 flex items-center gap-2 border-b pb-2"><TrendingUp size={18} className="text-green-600"/> Rincian Pemasukan</h3>
+                                                    <table className="w-full text-[10px] text-left">
+                                                        <thead className="bg-slate-100 text-slate-600 font-bold uppercase"><tr><th className="px-2 py-1.5">Tanggal</th><th className="px-2 py-1.5">Sumber</th><th className="px-2 py-1.5 text-right">Jumlah</th></tr></thead>
+                                                        <tbody className="divide-y divide-slate-100">
+                                                            {getFilteredPayments().length > 0 ? (getFilteredPayments().map((pay) => (
+                                                                <tr key={pay.id}>
+                                                                    <td className="px-2 py-1">{formatDateIndo(pay.date)}</td>
+                                                                    <td className="px-2 py-1">{pay.roomId} - {pay.residentName}</td>
+                                                                    <td className="px-2 py-1 text-right font-bold">
+                                                                        {pay.amount === 0 ? (
+                                                                            <span className="text-red-500 italic text-[9px] uppercase font-bold">Penghuni Check Out</span>
+                                                                        ) : (
+                                                                            formatIDR(pay.amount)
+                                                                        )}
+                                                                    </td>
+                                                                </tr>
+                                                            ))) : (<tr><td colSpan={3} className="px-2 py-4 text-center text-slate-400 italic">Tidak ada pemasukan.</td></tr>)}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex justify-between px-10 mt-12 break-inside-avoid"><div className="text-center"><p className="text-xs font-bold text-slate-400 uppercase mb-16">Diserahkan Oleh</p><p className="font-bold text-slate-800 border-b border-slate-300 pb-2 px-8">Pengelola</p></div><div className="text-center"><p className="text-xs font-bold text-slate-400 uppercase mb-16">Diterima Oleh</p><p className="font-bold text-slate-800 border-b border-slate-300 pb-2 px-8">Owner</p></div></div>
+                                            <div className="mt-8 pt-4 border-t border-slate-100 text-center"><p className="text-[10px] text-slate-400">Dicetak otomatis pada {new Date().toLocaleString('id-ID')}</p></div>
                                     </div>
                                 </div>
                             </div>
@@ -876,11 +954,13 @@ if (!isAppLoggedIn) {
 
         {/* --- MODALS (Overlays) --- */}
 
-        {/* 1. Modal Expense (NEW) */}
+        {/* 1. Modal Expense (EDITED to handle Edit Mode) */}
         {showExpenseModal && (
             <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
                 <div className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl animate-in zoom-in-95 duration-200">
-                    <h3 className="font-bold text-xl mb-4 text-slate-800 flex items-center gap-2"><TrendingDown className="text-red-600"/> Catat Pengeluaran</h3>
+                    <h3 className="font-bold text-xl mb-4 text-slate-800 flex items-center gap-2">
+                        <TrendingDown className="text-red-600"/> {editingExpenseId ? 'Edit Pengeluaran' : 'Catat Pengeluaran'}
+                    </h3>
                     <div className="space-y-4">
                         <div><label className="text-xs font-bold text-slate-500 uppercase">Keterangan Biaya</label><input className="w-full p-3 border rounded-xl mt-1 font-medium" placeholder="Contoh: Beli Lampu, Bayar Air" value={expenseFormData.description} onChange={e => setExpenseFormData({...expenseFormData, description: e.target.value})} autoFocus /></div>
                         <div className="grid grid-cols-2 gap-4">
@@ -890,8 +970,8 @@ if (!isAppLoggedIn) {
                         <div><label className="text-xs font-bold text-slate-500 uppercase">Kategori</label><select className="w-full p-3 border rounded-xl mt-1" value={expenseFormData.category} onChange={e => setExpenseFormData({...expenseFormData, category: e.target.value})}><option>Operasional</option><option>Perbaikan/Maintenance</option><option>Listrik & Air</option><option>Kebersihan</option><option>Lainnya</option></select></div>
                     </div>
                     <div className="flex justify-end gap-2 mt-6">
-                        <button onClick={() => setShowExpenseModal(false)} className="px-4 py-2 text-slate-500 font-bold hover:bg-slate-100 rounded-xl">Batal</button>
-                        <button onClick={handleSaveExpense} className="px-6 py-2 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 shadow-lg">Simpan</button>
+                        <button onClick={() => {setShowExpenseModal(false); setEditingExpenseId(null);}} className="px-4 py-2 text-slate-500 font-bold hover:bg-slate-100 rounded-xl">Batal</button>
+                        <button onClick={handleSaveExpense} className="px-6 py-2 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 shadow-lg">{editingExpenseId ? 'Update' : 'Simpan'}</button>
                     </div>
                 </div>
             </div>
