@@ -568,7 +568,7 @@ export default function App() {
 
         {/* --- MAIN CONTENT --- */}
         <main className="flex-1 overflow-y-auto h-screen print:h-auto print:overflow-visible relative">
-            <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 px-8 py-5 sticky top-0 z-20 hidden md:flex justify-between items-center print:hidden">
+            <header className="print:hidden bg-white/80 backdrop-blur-md border-b border-slate-200 px-8 py-5 sticky top-0 z-20 hidden md:flex justify-between items-center">
                 <div><h2 className="text-2xl font-bold text-slate-800 capitalize tracking-tight">{activeTab === 'monitor' ? 'Pantau Kos' : activeTab === 'reports' ? 'Laporan' : activeTab.replace(/([A-Z])/g, ' $1')}</h2><p className="text-sm text-slate-500 font-medium mt-1">Selamat datang, <span className="text-indigo-600">{userRole === 'admin' ? 'Pengelola Utama' : 'Pemilik Properti'}</span></p></div>
                 <div className="flex items-center gap-4"><div className="bg-slate-100 px-4 py-2 rounded-full text-sm font-bold text-slate-600 flex items-center gap-2"><div className={`w-2 h-2 rounded-full ${loading ? 'bg-yellow-400 animate-pulse' : 'bg-green-500'}`}></div>{loading ? 'Sinkronisasi...' : 'Online'}</div><div className="h-10 w-10 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-lg border-2 border-white shadow-sm">{userRole === 'admin' ? 'A' : 'P'}</div></div>
             </header>
