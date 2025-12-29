@@ -6,7 +6,8 @@ import {
   CalendarCheck, Wallet, CheckCircle2, Calendar, ArrowLeft, 
   Stamp, Clock, Save, Lock, TrendingUp, Calculator, UserCog, Download,
   Menu, Search, Filter, MoreHorizontal, UserCheck, MapPin, Check, ListChecks, 
-  AlertTriangle, TrendingDown, Receipt, DollarSign, ChevronLeft, Trash2, RefreshCw
+  AlertTriangle, TrendingDown, Receipt, DollarSign, ChevronLeft, Trash2, RefreshCw,
+  Database, ShieldAlert
 } from 'lucide-react';
 import { initializeApp } from "firebase/app";
 import { 
@@ -21,7 +22,8 @@ import {
   onSnapshot, 
   query, 
   orderBy, 
-  deleteDoc
+  deleteDoc,
+  writeBatch // Tambahan untuk reset massal
 } from "firebase/firestore";
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "firebase/auth";
 
@@ -186,6 +188,12 @@ export default function App() {
   const [expenseYear, setExpenseYear] = useState(new Date().getFullYear());
   const [expenseMonth, setExpenseMonth] = useState(new Date().getMonth());
 
+  // RESET DATA STATES (NEW)
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [resetType, setResetType] = useState(null); // 'ALL' or 'ROOM'
+  const [resetRoomTarget, setResetRoomTarget] = useState('');
+  const [resetPinInput, setResetPinInput] = useState('');
+
   // Form Data
   const [roomFormData, setRoomFormData] = useState({ number: '', price: 0, type: '', floor: '', bathroom: 'Dalam', desc: '' });
   const [residentFormData, setResidentFormData] = useState({ name: '', entryDate: '', address: '', ktpPhoto: '' }); 
@@ -328,6 +336,93 @@ export default function App() {
       setTimeout(() => { setLoading(false); }, 1000);
   };
 
+  // --- LOGIC RESET DATA (NEW) ---
+  const openResetModal = (type) => {
+      setResetType(type);
+      setResetPinInput('');
+      setResetRoomTarget('');
+      setShowResetModal(true);
+  };
+
+  const executeResetData = async () => {
+      // 1. Validasi PIN
+      if (resetPinInput !== config.adminCode) {
+          showToast("PIN Admin Salah! Akses Ditolak.", "error");
+          return;
+      }
+
+      setLoading(true);
+      const batch = writeBatch(db);
+
+      try {
+          if (resetType === 'ALL') {
+              // RESET SEMUA (Factory Reset Logic)
+              
+              // 1. Kosongkan semua kamar
+              rooms.forEach(room => {
+                  const ref = doc(db, getCollectionRef('rooms').path, room.docId);
+                  batch.update(ref, { 
+                      resident: '', 
+                      entryDate: '', 
+                      nextPaymentDate: '', 
+                      address: '', 
+                      ktpPhoto: null, 
+                      status: 'Available', 
+                      debt: 0 
+                  });
+              });
+
+              // 2. Hapus semua riwayat pembayaran
+              payments.forEach(pay => {
+                  const ref = doc(db, getCollectionRef('payments').path, pay.docId);
+                  batch.delete(ref);
+              });
+
+              // 3. Hapus semua pengeluaran
+              expenses.forEach(exp => {
+                  const ref = doc(db, getCollectionRef('expenses').path, exp.docId);
+                  batch.delete(ref);
+              });
+
+              await batch.commit();
+              showToast("SYSTEM RESET BERHASIL! Semua data telah dihapus.");
+
+          } else if (resetType === 'ROOM') {
+              // RESET PER KAMAR
+              if (!resetRoomTarget) {
+                  showToast("Pilih kamar terlebih dahulu!", "error");
+                  setLoading(false);
+                  return;
+              }
+
+              const roomToReset = rooms.find(r => r.id === parseInt(resetRoomTarget));
+              if (roomToReset) {
+                  const ref = doc(db, getCollectionRef('rooms').path, roomToReset.docId);
+                  // Hanya update kamar, tidak hapus history payment global (agar laporan tetap aman)
+                  // atau mau dihapus juga history payment kamar ini? Biasanya reset kamar = penghuni keluar.
+                  // Sesuai request "Reset Data Per Kamar", kita kosongkan kamar saja.
+                  await updateDoc(ref, {
+                      resident: '', 
+                      entryDate: '', 
+                      nextPaymentDate: '', 
+                      address: '', 
+                      ktpPhoto: null, 
+                      status: 'Available', 
+                      debt: 0 
+                  });
+                  showToast(`Data Kamar ${roomToReset.number} berhasil di-reset.`);
+              }
+          }
+          
+          setShowResetModal(false);
+      } catch (error) {
+          console.error(error);
+          showToast("Gagal melakukan reset: " + error.message, "error");
+      } finally {
+          setLoading(false);
+      }
+  };
+
   // --- LOGIC EXPENSES (EDIT, ADD, DELETE) ---
   const handleSaveExpense = async () => {
     if (!expenseFormData.description || !expenseFormData.amount || !expenseFormData.date || !user) {
@@ -374,16 +469,13 @@ export default function App() {
       setShowExpenseModal(true);
   };
 
-  // Trigger Delete Confirmation Modal
   const requestDeleteExpense = (docId) => {
       setDeleteTarget({ id: docId, type: 'expense' });
       setShowDeleteConfirm(true);
   };
 
-  // Execute Delete after Confirmation
   const executeDelete = async () => {
       if (!deleteTarget) return;
-
       try {
           if (deleteTarget.type === 'expense') {
              await deleteDoc(doc(db, getCollectionRef('expenses').path, deleteTarget.id));
@@ -511,7 +603,7 @@ if (!isAppLoggedIn) {
             <input type="password" placeholder="Masukkan Kode Akses" className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 outline-none transition-all font-bold text-slate-700 placeholder:font-normal" value={loginCode} onChange={(e) => setLoginCode(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleLogin()} />
           </div>
           <button onClick={handleLogin} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-2xl shadow-xl shadow-indigo-200 active:scale-95 transition-all flex items-center justify-center gap-2">Masuk Aplikasi <ChevronRight size={20} /></button>
-          <div className="text-center space-y-0.5"><p className="text-xs text-slate-400">Versi 7.6.2 — CBR-KOS Manager</p><p className="text-[11px] font-bold text-slate-500">Dikembangkan oleh Malang Florist Group</p></div>
+          <div className="text-center space-y-0.5"><p className="text-xs text-slate-400">Versi 7.7.0 — CBR-KOS Manager</p><p className="text-[11px] font-bold text-slate-500">Dikembangkan oleh Malang Florist Group</p></div>
         </div>
       </div>
     </div>
@@ -838,15 +930,55 @@ if (!isAppLoggedIn) {
                     </div>
                 )}
 
-                {/* --- CONTENT: SETTINGS --- */}
+                {/* --- CONTENT: SETTINGS (UPDATED) --- */}
                 {activeTab === 'settings' && (
-                    <div className="max-w-2xl mx-auto bg-white rounded-3xl border border-slate-200 shadow-sm p-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                        <div className="flex items-center gap-4 mb-8"><div className="bg-slate-800 p-3 rounded-2xl text-white"><Lock size={24} /></div><div><h3 className="font-bold text-xl text-slate-800">Keamanan Akses</h3><p className="text-sm text-slate-500">Ubah kode akses untuk masuk ke aplikasi.</p></div></div>
-                        <div className="space-y-6">
-                            <div><label className="block text-sm font-bold text-slate-700 mb-2">Kode Akses Owner</label><input type="text" className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 outline-none transition-all font-bold text-slate-800" value={config.ownerCode} onChange={(e) => setConfig({...config, ownerCode: e.target.value})} /></div>
-                            <div><label className="block text-sm font-bold text-slate-700 mb-2">Kode Akses Admin</label><input type="text" className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 outline-none transition-all font-bold text-slate-800" value={config.adminCode} onChange={(e) => setConfig({...config, adminCode: e.target.value})} /></div>
-                            <div className="pt-4"><button onClick={handleSaveSettings} className="w-full bg-slate-800 text-white font-bold py-4 rounded-2xl shadow-lg hover:bg-slate-900 transition-all flex items-center justify-center gap-2"><Save size={20} /> Simpan Perubahan</button></div>
+                    <div className="max-w-2xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        
+                        {/* 1. Keamanan Akses */}
+                        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-8">
+                            <div className="flex items-center gap-4 mb-8"><div className="bg-slate-800 p-3 rounded-2xl text-white"><Lock size={24} /></div><div><h3 className="font-bold text-xl text-slate-800">Keamanan Akses</h3><p className="text-sm text-slate-500">Ubah kode akses untuk masuk ke aplikasi.</p></div></div>
+                            <div className="space-y-6">
+                                <div><label className="block text-sm font-bold text-slate-700 mb-2">Kode Akses Owner</label><input type="text" className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 outline-none transition-all font-bold text-slate-800" value={config.ownerCode} onChange={(e) => setConfig({...config, ownerCode: e.target.value})} /></div>
+                                <div><label className="block text-sm font-bold text-slate-700 mb-2">Kode Akses Admin</label><input type="text" className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 outline-none transition-all font-bold text-slate-800" value={config.adminCode} onChange={(e) => setConfig({...config, adminCode: e.target.value})} /></div>
+                                <div className="pt-4"><button onClick={handleSaveSettings} className="w-full bg-slate-800 text-white font-bold py-4 rounded-2xl shadow-lg hover:bg-slate-900 transition-all flex items-center justify-center gap-2"><Save size={20} /> Simpan Perubahan</button></div>
+                            </div>
                         </div>
+
+                        {/* 2. Zona Bahaya / Reset Data */}
+                        <div className="bg-red-50 rounded-3xl border border-red-200 shadow-sm p-8">
+                            <div className="flex items-center gap-4 mb-6">
+                                <div className="bg-red-600 p-3 rounded-2xl text-white"><ShieldAlert size={24} /></div>
+                                <div>
+                                    <h3 className="font-bold text-xl text-red-800">Zona Bahaya / Reset Data</h3>
+                                    <p className="text-sm text-red-600 opacity-80">Hati-hati! Tindakan di sini tidak dapat dibatalkan.</p>
+                                </div>
+                            </div>
+                            
+                            <div className="space-y-4">
+                                {/* Reset Per Kamar */}
+                                <div className="bg-white p-4 rounded-2xl border border-red-100 flex flex-col md:flex-row justify-between items-center gap-4">
+                                    <div className="w-full">
+                                        <h4 className="font-bold text-slate-800 text-sm mb-1">Reset Data Per Kamar</h4>
+                                        <p className="text-xs text-slate-500">Kosongkan penghuni dan tagihan pada satu kamar tertentu.</p>
+                                    </div>
+                                    <button onClick={() => openResetModal('ROOM')} className="w-full md:w-auto px-4 py-2 bg-white border-2 border-red-200 text-red-600 font-bold rounded-xl hover:bg-red-50 hover:border-red-300 transition-all whitespace-nowrap">
+                                        Pilih Kamar
+                                    </button>
+                                </div>
+
+                                {/* Reset Factory */}
+                                <div className="bg-white p-4 rounded-2xl border border-red-100 flex flex-col md:flex-row justify-between items-center gap-4">
+                                    <div className="w-full">
+                                        <h4 className="font-bold text-slate-800 text-sm mb-1">Reset Total (Factory Reset)</h4>
+                                        <p className="text-xs text-slate-500">Hapus SEMUA data (Kamar, Pembayaran, Pengeluaran).</p>
+                                    </div>
+                                    <button onClick={() => openResetModal('ALL')} className="w-full md:w-auto px-4 py-2 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 shadow-lg shadow-red-200 transition-all whitespace-nowrap">
+                                        Reset Semua
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
                     </div>
                 )}
             </div>
@@ -854,7 +986,75 @@ if (!isAppLoggedIn) {
 
         {/* --- MODALS (Overlays) --- */}
 
-        {/* 1. NEW DELETE CONFIRMATION MODAL (Popup Cantik) */}
+        {/* 1. RESET DATA MODAL (NEW) */}
+        {showResetModal && (
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[90] flex items-center justify-center p-4">
+                <div className="bg-white rounded-3xl w-full max-w-sm p-8 shadow-2xl animate-in zoom-in-95 duration-200 border-t-8 border-red-500">
+                    
+                    <div className="text-center mb-6">
+                        <div className="w-20 h-20 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-white shadow-lg">
+                            <Trash2 size={32}/>
+                        </div>
+                        <h3 className="font-black text-2xl text-slate-800">
+                            {resetType === 'ALL' ? 'Reset Semua Data?' : 'Reset Kamar?'}
+                        </h3>
+                        <p className="text-slate-500 text-sm mt-2">
+                            {resetType === 'ALL' 
+                                ? 'PERINGATAN: Semua data aplikasi akan dihapus permanen. Aplikasi akan kembali seperti baru.' 
+                                : 'Data penghuni di kamar ini akan dihapus dan status kamar menjadi kosong.'}
+                        </p>
+                    </div>
+
+                    <div className="space-y-4">
+                        {resetType === 'ROOM' && (
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Pilih Kamar</label>
+                                <select 
+                                    className="w-full p-3 border-2 border-slate-200 rounded-xl font-bold text-slate-700 focus:border-indigo-500 outline-none"
+                                    value={resetRoomTarget}
+                                    onChange={(e) => setResetRoomTarget(e.target.value)}
+                                >
+                                    <option value="">-- Pilih Kamar --</option>
+                                    {rooms.filter(r => r.resident).map(r => (
+                                        <option key={r.id} value={r.id}>{r.number} - {r.resident}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        )}
+
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Konfirmasi PIN Admin</label>
+                            <div className="relative">
+                                <Lock className="absolute left-3 top-3.5 text-slate-400" size={18}/>
+                                <input 
+                                    type="password" 
+                                    className="w-full pl-10 p-3 border-2 border-red-100 bg-red-50 rounded-xl font-bold text-red-800 placeholder-red-300 focus:border-red-500 outline-none"
+                                    placeholder="Masukkan PIN"
+                                    value={resetPinInput}
+                                    onChange={(e) => setResetPinInput(e.target.value)}
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="flex gap-3 mt-8">
+                        <button onClick={() => setShowResetModal(false)} className="flex-1 py-3 border-2 border-slate-200 rounded-xl font-bold text-slate-500 hover:bg-slate-50">
+                            Batal
+                        </button>
+                        <button 
+                            onClick={executeResetData} 
+                            disabled={loading || (resetType === 'ROOM' && !resetRoomTarget)}
+                            className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 shadow-lg shadow-red-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {loading ? 'Memproses...' : 'HAPUS DATA'}
+                        </button>
+                    </div>
+
+                </div>
+            </div>
+        )}
+
+        {/* 2. NEW DELETE CONFIRMATION MODAL (Popup Cantik - Existing) */}
         {showDeleteConfirm && (
              <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[80] flex items-center justify-center p-4">
                  <div className="bg-white rounded-3xl w-full max-w-sm p-8 shadow-2xl text-center animate-in zoom-in-95 duration-200">
@@ -869,7 +1069,7 @@ if (!isAppLoggedIn) {
              </div>
         )}
 
-        {/* 2. Modal Expense */}
+        {/* 3. Modal Expense */}
         {showExpenseModal && (
             <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
                 <div className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl animate-in zoom-in-95 duration-200">
