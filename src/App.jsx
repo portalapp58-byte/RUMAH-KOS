@@ -742,40 +742,6 @@ if (!isAppLoggedIn) {
                                 <div className="absolute -right-6 -bottom-6 text-red-50 opacity-50"><Receipt size={140} /></div>
                             </div>
                             
-                            {/* Filtered List */}
-                            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm h-full max-h-[500px] overflow-y-auto">
-                                <h4 className="font-bold text-lg text-slate-800 mb-4 sticky top-0 bg-white pb-2 border-b border-slate-100 flex justify-between items-center">
-                                    <span>Rincian Pengeluaran</span>
-                                    <span className="text-xs bg-slate-100 text-slate-500 px-2 py-1 rounded-lg">{getExpensesForView().length} Data</span>
-                                </h4>
-                                <div className="space-y-3">
-                                    {getExpensesForView().length > 0 ? (
-                                        getExpensesForView().map(exp => (
-                                            <div key={exp.docId} className="flex justify-between items-center p-3 hover:bg-slate-50 rounded-xl border border-slate-100 transition-colors group">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="bg-slate-100 p-2 rounded-lg text-slate-500"><Receipt size={20}/></div>
-                                                    <div>
-                                                        <p className="font-bold text-slate-800">{exp.description}</p>
-                                                        <p className="text-xs text-slate-500">{formatDateIndo(exp.date)} • {exp.category}</p>
-                                                    </div>
-                                                </div>
-                                                <div className="flex items-center gap-3">
-                                                    <span className="font-bold text-red-600">-{formatIDR(exp.amount)}</span>
-                                                    <button onClick={() => handleDeleteExpense(exp.docId)} className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all"><X size={16}/></button>
-                                                </div>
-                                            </div>
-                                        ))
-                                    ) : (
-                                        <div className="flex flex-col items-center justify-center py-10 text-slate-400">
-                                            <Receipt size={48} className="mb-2 opacity-20"/>
-                                            <p className="italic">Tidak ada data pengeluaran di bulan ini.</p>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                )}
 
                 {/* --- CONTENT: HISTORY & REPORTS (UPDATED) --- */}
                 {(activeTab === 'history' || activeTab === 'reports') && (
