@@ -584,15 +584,18 @@ if (!isAppLoggedIn) {
             Masuk Aplikasi <ChevronRight size={20} />
           </button>
 
-          {/* 👇 teks versi — sudah di tempat yang benar */}
-          <p className="text-center text-xs text-slate-300">
-            Versi 1.0.0 — CBR-KOS Manager
+          {/* 👇 versi + credit */}
+          <div className="text-center space-y-0.5">
+
+          <p className="text-xs text-slate-400">
+              Versi 1.0.0 — CBR-KOS Manager
           </p>
 
-          <p className="text-center text-[11px] text-slate-300">
-            Dikembangkan Oleh Malang Florist Group
+          <p className="text-[11px] text-slate-500">
+              Dikembangkan oleh Malang Florist Group
           </p>
-
+          
+        </div>
         </div>
       </div>
     </div>
